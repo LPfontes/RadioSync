@@ -48,7 +48,7 @@ export function usePlayer(audioRef) {
   function startTimeUpdates() {
     const audio = audioRef.value
     if (!audio) return
-
+    syncPlayback()
     function update() {
       currentTime.value = audio.currentTime
       duration.value = audio.duration || store.state.duration
@@ -57,13 +57,19 @@ export function usePlayer(audioRef) {
     update()
   }
 
-  watch(() => store.state, syncPlayback, { deep: true })
+  watch(() => store.state, syncPlayback, { deep: true, immediate: true })
 
   watch(() => store.state.currentSong, (newSong) => {
     const audio = audioRef.value
     if (audio && newSong) {
       audio.src = newSong
       audio.load()
+      syncPlayback()
+    }
+  })
+
+  watch(audioRef, (audio) => {
+    if (audio && store.state.currentSong) {
       syncPlayback()
     }
   })

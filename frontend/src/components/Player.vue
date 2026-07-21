@@ -150,4 +150,6 @@ function onEnded() {
     emit('togglePlay', 'NEXT_TRACK')
   }
 }
+
+defineExpose({ syncPlayback })
 </script>

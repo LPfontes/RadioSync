@@ -34,7 +34,7 @@
       </div>
 
       <div class="bg-zinc-800 rounded-lg p-6">
-        <Player @toggle-play="handleTogglePlay" />
+        <Player ref="playerRef" @toggle-play="handleTogglePlay" />
       </div>
 
       <div class="bg-zinc-800 rounded-lg p-4">
@@ -52,7 +52,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Radio, Copy } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
@@ -66,10 +66,16 @@ const router = useRouter()
 const store = useStationStore()
 const { connect, send, disconnect } = useWebSocket()
 const showPlayer = ref(false)
+const playerRef = ref(null)
 
 function enterStation() {
   showPlayer.value = true
   connect()
+  nextTick(() => {
+    if (playerRef.value?.syncPlayback) {
+      playerRef.value.syncPlayback()
+    }
+  })
 }
 
 function handleTogglePlay(action, value) {
