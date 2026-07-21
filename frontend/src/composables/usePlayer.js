@@ -18,11 +18,6 @@ export function usePlayer(audioRef) {
       const elapsed = (Date.now() - store.state.startedAt) / 1000
       const expectedPosition = elapsed + store.state.seekOffset
 
-      if (audio.src !== store.state.currentSong) {
-        audio.src = store.state.currentSong
-        audio.load()
-      }
-
       if (audio.paused) {
         audio.play().catch(() => {})
       }
@@ -35,10 +30,6 @@ export function usePlayer(audioRef) {
       if (!audio.paused) {
         audio.pause()
       }
-      if (audio.src !== store.state.currentSong && store.state.currentSong) {
-        audio.src = store.state.currentSong
-        audio.load()
-      }
       if (store.state.seekOffset > 0) {
         audio.currentTime = store.state.seekOffset
       }
@@ -48,7 +39,6 @@ export function usePlayer(audioRef) {
   function startTimeUpdates() {
     const audio = audioRef.value
     if (!audio) return
-    syncPlayback()
     function update() {
       currentTime.value = audio.currentTime
       duration.value = audio.duration || store.state.duration
@@ -57,20 +47,23 @@ export function usePlayer(audioRef) {
     update()
   }
 
-  watch(() => store.state, syncPlayback, { deep: true, immediate: true })
+  watch(() => store.state.isPlaying, syncPlayback)
+  watch(() => store.state.seekOffset, syncPlayback)
+  watch(() => store.state.startedAt, syncPlayback)
 
-  watch(() => store.state.currentSong, (newSong) => {
+  watch(() => store.state.currentSong, (url) => {
     const audio = audioRef.value
-    if (audio && newSong) {
-      audio.src = newSong
+    if (audio && url) {
+      audio.src = url
       audio.load()
       syncPlayback()
     }
   })
 
   watch(audioRef, (audio) => {
-    if (audio && store.state.currentSong) {
-      syncPlayback()
+    if (audio && store.state.currentSong && !audio.src) {
+      audio.src = store.state.currentSong
+      audio.load()
     }
   })
 
