@@ -65,7 +65,7 @@ import { usePlayer } from '../composables/usePlayer'
 const emit = defineEmits(['togglePlay'])
 const store = useStationStore()
 const audioRef = ref(null)
-const { currentTime, duration, buffering, startTimeUpdates } = usePlayer(audioRef)
+const { currentTime, duration, buffering, startTimeUpdates, syncPlayback } = usePlayer(audioRef)
 
 const VOLUME_KEY = 'radiosync_volume'
 const REPEAT_KEY = 'radiosync_repeat'
