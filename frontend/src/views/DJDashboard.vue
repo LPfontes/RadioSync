@@ -76,7 +76,7 @@ import { Plus, X, SkipForward, Copy } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { uploadMusic, getRepository } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
-import { saveStation, removeStation } from '../services/storage'
+import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
 
 const route = useRoute()
@@ -92,6 +92,11 @@ onMounted(async () => {
   const id = route.params.stationId
   if (id) {
     store.stationId = id
+    store.role = 'dj'
+    if (!store.djToken) {
+      const saved = getSavedStations().find(s => s.id === id)
+      if (saved) store.djToken = saved.token
+    }
     saveStation(id, 'dj', store.djToken)
     connect()
     try {
