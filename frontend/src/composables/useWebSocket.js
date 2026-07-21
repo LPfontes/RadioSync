@@ -10,8 +10,7 @@ export function useWebSocket() {
   function connect() {
     if (!store.stationId) return
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:'
-    const host = import.meta.env.VITE_WS_URL || `${protocol}//localhost:8080`
+    const host = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
     let url = `${host}/ws/stations/${store.stationId}`
 
     if (store.role === 'dj' && store.djToken) {
