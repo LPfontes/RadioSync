@@ -60,6 +60,8 @@ func main() {
 		})
 	})
 
+	r.Get("/api/v1/debug", handler.DebugHandler)
+
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)
 
 	frontendDir := os.Getenv("FRONTEND_DIR")
