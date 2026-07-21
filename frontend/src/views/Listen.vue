@@ -72,6 +72,7 @@ function enterStation() {
   showPlayer.value = true
   connect()
   nextTick(() => {
+    send({ type: 'SYNC_REQUEST' })
     if (playerRef.value?.syncPlayback) {
       playerRef.value.syncPlayback()
     }

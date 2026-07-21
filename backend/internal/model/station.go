@@ -61,13 +61,28 @@ type PlaylistMsg struct {
 }
 
 func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
-	if client.Role != "dj" {
-		return
-	}
-
 	var incoming IncomingMessage
 	if err := json.Unmarshal(msg, &incoming); err != nil {
 		log.Printf("erro ao parsear mensagem: %v", err)
+		return
+	}
+
+	if incoming.Type == "SYNC_REQUEST" {
+		s.RLock()
+		pos := s.calcPosition()
+		s.RUnlock()
+		data, _ := json.Marshal(map[string]interface{}{
+			"type":     "SYNC",
+			"position": pos,
+		})
+		select {
+		case client.Send <- data:
+		default:
+		}
+		return
+	}
+
+	if client.Role != "dj" {
 		return
 	}
 
@@ -172,4 +187,12 @@ func (s *Station) broadcastPlaylist() {
 		Type:     "PLAYLIST_UPDATED",
 		Playlist: window,
 	})
+}
+
+func (s *Station) calcPosition() float64 {
+	if s.State.IsPlaying {
+		elapsed := float64(time.Now().UnixMilli()-s.State.StartedAt) / 1000
+		return s.State.SeekOffset + elapsed
+	}
+	return s.State.SeekOffset
 }

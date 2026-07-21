@@ -52,6 +52,10 @@ export function useWebSocket() {
       case 'PLAYLIST_UPDATED':
         store.setPlaylist(msg.playlist)
         break
+      case 'SYNC':
+        store.state.seekOffset = msg.position
+        store.state.startedAt = Date.now()
+        break
     }
   }
 
