@@ -9,6 +9,7 @@ import (
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/model"
+	"radio-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
 )
@@ -51,6 +52,13 @@ func CreateStation(w http.ResponseWriter, r *http.Request) {
 	stationsMu.Lock()
 	stations[id] = station
 	stationsMu.Unlock()
+
+	station.Hub.OnMessage = func(client *ws.Client, msg []byte) {
+		station.HandleMessage(client, msg)
+		SaveStations()
+	}
+
+	go SaveStations()
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)

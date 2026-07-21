@@ -36,7 +36,6 @@ func NewStation(id, dj string) *Station {
 		Playlist:   make([]Track, 0),
 	}
 	s.Hub = ws.NewHub(id)
-	s.Hub.OnMessage = s.handleMessage
 	go s.Hub.Run()
 	return s
 }
@@ -61,7 +60,7 @@ type PlaylistMsg struct {
 	Playlist []Track `json:"playlist"`
 }
 
-func (s *Station) handleMessage(client *ws.Client, msg []byte) {
+func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	if client.Role != "dj" {
 		return
 	}

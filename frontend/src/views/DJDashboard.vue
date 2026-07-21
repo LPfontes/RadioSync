@@ -98,7 +98,9 @@ onMounted(async () => {
       const repo = await getRepository(id, store.djToken)
       store.setRepository(repo)
     } catch (e) {
-      console.error('Erro ao carregar repositório:', e)
+      removeStation(id)
+      store.reset()
+      router.push('/')
     }
   }
 })

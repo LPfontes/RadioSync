@@ -103,7 +103,9 @@ onMounted(async () => {
       if (data.state) store.setState(data.state)
       if (data.playlist) store.setPlaylist(data.playlist)
     } catch (e) {
-      console.error('Erro ao carregar estação:', e)
+      removeStation(id)
+      store.reset()
+      router.push('/')
     }
   }
 })
