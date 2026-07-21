@@ -18,10 +18,11 @@ RUN apk add --no-cache ffmpeg ca-certificates
 WORKDIR /app
 COPY --from=backend /app/server .
 COPY --from=frontend /app/dist ./frontend/dist
-RUN mkdir -p /app/musicas
+RUN mkdir -p /app/musicas /app/data
 
 ENV PORT=8080
 ENV MUSIC_DIR=/app/musicas
 ENV FRONTEND_DIR=/app/frontend/dist
+ENV DATA_DIR=/app/data
 EXPOSE 8080
 CMD ["./server"]

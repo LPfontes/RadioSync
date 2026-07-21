@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"radio-backend/internal/model"
+	"radio-backend/internal/ws"
 )
 
 type savedStation struct {
@@ -98,7 +99,14 @@ func LoadStations() {
 		station.State = ss.State
 		station.Repository = ss.Repository
 		station.Playlist = ss.Playlist
-		stations[ss.ID] = station
+
+		currentStation := station
+		currentStation.Hub.OnMessage = func(client *ws.Client, msg []byte) {
+			currentStation.HandleMessage(client, msg)
+			SaveStations()
+		}
+
+		stations[ss.ID] = currentStation
 	}
 
 	log.Printf("%d estações restauradas do arquivo", len(saved))
