@@ -52,12 +52,9 @@ func main() {
 	r.Route("/api/v1/stations", func(r chi.Router) {
 		r.Post("/", handler.CreateStation)
 		r.Get("/{stationId}", handler.GetStation)
-
-		r.Route("/{stationId}", func(r chi.Router) {
-			r.Post("/upload", handler.UploadMusic)
-			r.Get("/repository", handler.GetRepository)
-			r.Get("/musicas", handler.ListMusicFiles)
-		})
+		r.Post("/{stationId}/upload", handler.UploadMusic)
+		r.Get("/{stationId}/repository", handler.GetRepository)
+		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
 	})
 
 	r.Get("/api/v1/debug", handler.DebugHandler)
