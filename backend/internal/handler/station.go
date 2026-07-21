@@ -1,11 +1,11 @@
 package handler
 
 import (
+	"crypto/rand"
 	"encoding/json"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"sync"
-	"time"
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/model"
@@ -19,14 +19,18 @@ var (
 	stationsMu sync.RWMutex
 )
 
-var codeRand = rand.New(rand.NewSource(time.Now().UnixNano()))
-
 const codeChars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
 
 func generateCode(n int) string {
 	b := make([]byte, n)
+	max := big.NewInt(int64(len(codeChars)))
 	for i := range b {
-		b[i] = codeChars[codeRand.Intn(len(codeChars))]
+		num, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			b[i] = codeChars[0]
+		} else {
+			b[i] = codeChars[num.Int64()]
+		}
 	}
 	return string(b)
 }

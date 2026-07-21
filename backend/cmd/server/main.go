@@ -55,8 +55,10 @@ func main() {
 		r.Post("/{stationId}/upload", handler.UploadMusic)
 		r.Get("/{stationId}/repository", handler.GetRepository)
 		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
+		r.Get("/{stationId}/library", handler.GetGlobalLibrary)
 	})
 
+	r.Get("/api/v1/library", handler.GetGlobalLibrary)
 	r.Get("/api/v1/debug", handler.DebugHandler)
 
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)

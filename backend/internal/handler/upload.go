@@ -8,7 +8,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/media"
 	"radio-backend/internal/model"
 
@@ -18,6 +20,13 @@ import (
 
 func UploadMusic(w http.ResponseWriter, r *http.Request) {
 	stationID := chi.URLParam(r, "stationId")
+
+	authHeader := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" || token == authHeader || !auth.ValidateDJToken(token, stationID) {
+		http.Error(w, "não autorizado", http.StatusUnauthorized)
+		return
+	}
 
 	stationsMu.RLock()
 	station, ok := stations[stationID]
@@ -87,6 +96,13 @@ func UploadMusic(w http.ResponseWriter, r *http.Request) {
 
 func GetRepository(w http.ResponseWriter, r *http.Request) {
 	stationID := chi.URLParam(r, "stationId")
+
+	authHeader := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" || token == authHeader || !auth.ValidateDJToken(token, stationID) {
+		http.Error(w, "não autorizado", http.StatusUnauthorized)
+		return
+	}
 
 	stationsMu.RLock()
 	station, ok := stations[stationID]

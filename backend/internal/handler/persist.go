@@ -68,8 +68,16 @@ func SaveStations() {
 		return
 	}
 
-	if err := os.WriteFile(persistPath(), data, 0644); err != nil {
+	tmpPath := filepath.Join(dir, "stations.json.tmp")
+	finalPath := persistPath()
+
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
 		log.Printf("erro ao salvar estações: %v", err)
+		return
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		log.Printf("erro ao renomear arquivo de estações: %v", err)
 	}
 }
 

@@ -9,6 +9,8 @@ import (
 	"radio-backend/internal/ws"
 )
 
+var TrackResolver func(trackID string) (Track, bool)
+
 type PlaybackState struct {
 	IsPlaying   bool    `json:"isPlaying"`
 	StartedAt   int64   `json:"startedAt"`
@@ -70,7 +72,10 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	if incoming.Type == "SYNC_REQUEST" {
 		s.RLock()
 		pos := s.calcPosition()
+		isPlaying := s.State.IsPlaying
+		currentSong := s.State.CurrentSong
 		s.RUnlock()
+		log.Printf("SYNC_REQUEST de %s: pos=%.2f isPlaying=%v song=%s", client.ID, pos, isPlaying, currentSong)
 		data, _ := json.Marshal(map[string]interface{}{
 			"type":     "SYNC",
 			"position": pos,
@@ -132,25 +137,49 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	case "ADD_TO_PLAYLIST":
 		var data struct {
 			TrackID string `json:"trackId"`
+			Track   *Track `json:"track,omitempty"`
 		}
 		if err := json.Unmarshal(incoming.Data, &data); err != nil {
 			return
 		}
+
+		var targetTrack Track
+		found := false
+
 		for _, t := range s.Repository {
 			if t.ID == data.TrackID {
-				s.Playlist = append(s.Playlist, t)
-				if len(s.Playlist) == 1 {
-					s.State.CurrentSong = t.URL
-					s.State.Duration = t.Duration
-					s.State.SeekOffset = 0
-					s.State.StartedAt = time.Now().UnixMilli()
-					s.State.IsPlaying = true
-				}
-				s.broadcastPlaylist()
-				if len(s.Playlist) == 1 {
-					s.broadcastState()
-				}
-				return
+				targetTrack = t
+				found = true
+				break
+			}
+		}
+
+		if !found && data.Track != nil && data.Track.ID != "" {
+			targetTrack = *data.Track
+			s.Repository = append(s.Repository, targetTrack)
+			found = true
+		}
+
+		if !found && TrackResolver != nil {
+			if t, ok := TrackResolver(data.TrackID); ok {
+				targetTrack = t
+				s.Repository = append(s.Repository, targetTrack)
+				found = true
+			}
+		}
+
+		if found {
+			s.Playlist = append(s.Playlist, targetTrack)
+			if len(s.Playlist) == 1 {
+				s.State.CurrentSong = targetTrack.URL
+				s.State.Duration = targetTrack.Duration
+				s.State.SeekOffset = 0
+				s.State.StartedAt = time.Now().UnixMilli()
+				s.State.IsPlaying = true
+			}
+			s.broadcastPlaylist()
+			if len(s.Playlist) == 1 {
+				s.broadcastState()
 			}
 		}
 
@@ -180,8 +209,8 @@ func (s *Station) broadcastState() {
 
 func (s *Station) broadcastPlaylist() {
 	window := s.Playlist
-	if len(window) > 3 {
-		window = window[:3]
+	if len(window) > 50 {
+		window = window[:50]
 	}
 	s.Hub.BroadcastJSON(PlaylistMsg{
 		Type:     "PLAYLIST_UPDATED",

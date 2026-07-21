@@ -17,13 +17,13 @@ export function usePlayer(audioRef) {
     if (store.state.isPlaying) {
       const elapsed = (Date.now() - store.state.startedAt) / 1000
       const expectedPosition = elapsed + store.state.seekOffset
+      const audioDuration = audio.duration || store.state.duration || Infinity
 
       if (audio.paused) {
         audio.play().catch(() => {})
       }
 
-      const diff = Math.abs(audio.currentTime - expectedPosition)
-      if (diff > SYNC_THRESHOLD && expectedPosition < audio.duration) {
+      if (expectedPosition < audioDuration) {
         audio.currentTime = expectedPosition
       }
     } else {
@@ -39,6 +39,7 @@ export function usePlayer(audioRef) {
   function startTimeUpdates() {
     const audio = audioRef.value
     if (!audio) return
+    syncPlayback()
     function update() {
       currentTime.value = audio.currentTime
       duration.value = audio.duration || store.state.duration

@@ -64,19 +64,18 @@ import Player from '../components/Player.vue'
 const route = useRoute()
 const router = useRouter()
 const store = useStationStore()
-const { connect, send, disconnect } = useWebSocket()
+const { connect, send, disconnect } = useWebSocket(() => {
+  send({ type: 'SYNC_REQUEST' })
+  if (playerRef.value?.syncPlayback) {
+    playerRef.value.syncPlayback()
+  }
+})
 const showPlayer = ref(false)
 const playerRef = ref(null)
 
 function enterStation() {
   showPlayer.value = true
   connect()
-  nextTick(() => {
-    send({ type: 'SYNC_REQUEST' })
-    if (playerRef.value?.syncPlayback) {
-      playerRef.value.syncPlayback()
-    }
-  })
 }
 
 function handleTogglePlay(action, value) {

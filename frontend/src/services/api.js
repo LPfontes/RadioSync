@@ -43,4 +43,9 @@ export async function listMusicFiles(stationId) {
   return data
 }
 
+export async function getGlobalLibrary() {
+  const { data } = await api.get('/api/v1/library')
+  return data
+}
+
 export default api

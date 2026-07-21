@@ -1,7 +1,7 @@
 import { ref, onUnmounted } from 'vue'
 import { useStationStore } from '../stores/station'
 
-export function useWebSocket() {
+export function useWebSocket(onConnected) {
   const store = useStationStore()
   const ws = ref(null)
   const connected = ref(false)
@@ -21,6 +21,7 @@ export function useWebSocket() {
 
     socket.onopen = () => {
       connected.value = true
+      if (onConnected) onConnected()
     }
 
     socket.onmessage = (event) => {
