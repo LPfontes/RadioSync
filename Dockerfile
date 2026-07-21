@@ -23,7 +23,5 @@ RUN mkdir -p /app/musicas
 ENV PORT=8080
 ENV MUSIC_DIR=/app/musicas
 ENV FRONTEND_DIR=/app/frontend/dist
-ENV JWT_SECRET=change-this-in-production
-
 EXPOSE 8080
 CMD ["./server"]
