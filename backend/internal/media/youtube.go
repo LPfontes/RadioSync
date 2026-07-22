@@ -42,7 +42,7 @@ func getCookiesFile() string {
 }
 
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
-	extractorArgs := "youtube:player_client=mweb,ios,tv_embedded,android"
+	extractorArgs := "youtube:player_client=mweb,web"
 	cookiesPath := getCookiesFile()
 
 	// 1. Obter título do vídeo limpo
