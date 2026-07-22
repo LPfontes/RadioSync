@@ -15,27 +15,42 @@ func getCookiesFile() string {
 	if dir == "" {
 		dir = "./data"
 	}
+	_ = os.MkdirAll(dir, 0755)
 	cookiesPath := filepath.Join(dir, "cookies.txt")
 
 	// 1. Suporte para variável de ambiente YOUTUBE_COOKIES_BASE64 (Ideal no Railway)
 	if envBase64 := strings.TrimSpace(os.Getenv("YOUTUBE_COOKIES_BASE64")); envBase64 != "" {
 		data, err := base64.StdEncoding.DecodeString(envBase64)
 		if err == nil && len(data) > 0 {
-			_ = os.MkdirAll(dir, 0755)
 			_ = os.WriteFile(cookiesPath, data, 0644)
 			return cookiesPath
 		}
 	}
 
-	// 2. Suporte para variável de ambiente YOUTUBE_COOKIES (Texto bruto)
+	// 2. Suporte para variável de ambiente YOUTUBE_COOKIES (Texto bruto ou Base64)
 	if envRaw := strings.TrimSpace(os.Getenv("YOUTUBE_COOKIES")); envRaw != "" {
-		_ = os.MkdirAll(dir, 0755)
+		if strings.HasPrefix(envRaw, "IyBOZXRzY2FwZ") {
+			decoded, err := base64.StdEncoding.DecodeString(envRaw)
+			if err == nil && len(decoded) > 0 {
+				_ = os.WriteFile(cookiesPath, decoded, 0644)
+				return cookiesPath
+			}
+		}
 		_ = os.WriteFile(cookiesPath, []byte(envRaw), 0644)
 		return cookiesPath
 	}
 
-	// 3. Checagem física do arquivo no disco
-	if _, err := os.Stat(cookiesPath); err == nil {
+	// 3. Checagem do arquivo físico no disco
+	if data, err := os.ReadFile(cookiesPath); err == nil && len(data) > 0 {
+		strContent := strings.TrimSpace(string(data))
+		// Se o arquivo no disco estiver em formato Base64, decodifica automaticamente para o formato Netscape
+		if strings.HasPrefix(strContent, "IyBOZXRzY2FwZ") {
+			decoded, err := base64.StdEncoding.DecodeString(strContent)
+			if err == nil && len(decoded) > 0 {
+				_ = os.WriteFile(cookiesPath, decoded, 0644)
+				return cookiesPath
+			}
+		}
 		return cookiesPath
 	}
 	return ""
