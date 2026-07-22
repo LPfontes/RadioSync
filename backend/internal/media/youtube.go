@@ -41,46 +41,26 @@ func getCookiesFile() string {
 	return ""
 }
 
-func runYtDlpDownload(youtubeURL, outputPath, cookiesPath string) error {
-	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
-	extractorArgs := "youtube:player_client=android,ios,mweb,web"
-
-	downloadArgs := []string{
-		"-f", "ba/b",
-		"-x",
-		"--audio-format", "opus",
-		"--audio-quality", "0",
-		"--extractor-args", extractorArgs,
-		"-o", outputTemplate,
-		"--no-playlist",
-	}
-	if cookiesPath != "" {
-		downloadArgs = append(downloadArgs, "--cookies", cookiesPath)
-	}
-	downloadArgs = append(downloadArgs, youtubeURL)
-
-	cmd := exec.Command("yt-dlp", downloadArgs...)
-	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-
-	if err := cmd.Run(); err != nil {
-		return fmt.Errorf("%v | %s", err, strings.TrimSpace(stderr.String()))
-	}
-	return nil
+type downloadStrategy struct {
+	cookies string
+	clients string
 }
 
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
 	cookiesPath := getCookiesFile()
 
-	// 1. Obter título do vídeo
+	// 1. Obter título do vídeo limpo
 	titleArgs := []string{
 		"--quiet",
 		"--no-warnings",
 		"--print", "%(title)s",
 		"--no-playlist",
-		"--extractor-args", "youtube:player_client=android,ios,mweb,web",
-		youtubeURL,
 	}
+	if cookiesPath != "" {
+		titleArgs = append(titleArgs, "--cookies", cookiesPath)
+	}
+	titleArgs = append(titleArgs, youtubeURL)
+
 	titleCmd := exec.Command("yt-dlp", titleArgs...)
 	titleOut, _ := titleCmd.Output()
 	title := strings.TrimSpace(string(titleOut))
@@ -88,27 +68,56 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		title = "Vídeo do YouTube"
 	}
 
-	// 2. Tentar download com cookies (se existir cookies.txt)
-	var err error
+	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
+
+	// 2. Definir estratégias em ordem de resiliência no Railway / IPs de DataCenter
+	strategies := []downloadStrategy{}
+
 	if cookiesPath != "" {
-		err = runYtDlpDownload(youtubeURL, outputPath, cookiesPath)
-	} else {
-		err = fmt.Errorf("sem cookies.txt configurado")
+		strategies = append(strategies,
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web"},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
+			downloadStrategy{cookies: cookiesPath, clients: ""},
+		)
 	}
 
-	// 3. Se falhar ou não houver cookies, tentar fallback sem cookies (cliente android/ios)
-	if err != nil {
-		errFallback := runYtDlpDownload(youtubeURL, outputPath, "")
-		if errFallback != nil {
-			if cookiesPath != "" {
-				return "", 0, fmt.Errorf("falha ao baixar do YouTube com cookies (%v) e fallback sem cookies (%v)", err, errFallback)
-			}
-			return "", 0, fmt.Errorf("falha ao baixar do YouTube: %v", errFallback)
+	strategies = append(strategies,
+		downloadStrategy{cookies: "", clients: "youtube:player_client=web_embedded,android,ios"},
+		downloadStrategy{cookies: "", clients: "youtube:player_client=tv,mweb"},
+		downloadStrategy{cookies: "", clients: ""},
+	)
+
+	var lastErr error
+	for _, st := range strategies {
+		args := []string{
+			"-f", "ba/b",
+			"-x",
+			"--audio-format", "opus",
+			"--audio-quality", "0",
+			"-o", outputTemplate,
+			"--no-playlist",
+			"--no-warnings",
+		}
+		if st.clients != "" {
+			args = append(args, "--extractor-args", st.clients)
+		}
+		if st.cookies != "" {
+			args = append(args, "--cookies", st.cookies)
+		}
+		args = append(args, youtubeURL)
+
+		cmd := exec.Command("yt-dlp", args...)
+		var stderr bytes.Buffer
+		cmd.Stderr = &stderr
+
+		if err := cmd.Run(); err == nil {
+			// Download realizado com sucesso!
+			duration, _ := GetDuration(outputPath)
+			return title, duration, nil
+		} else {
+			lastErr = fmt.Errorf("%v | log: %s", err, strings.TrimSpace(stderr.String()))
 		}
 	}
 
-	// 4. Obter duração do arquivo .opus gerado
-	duration, _ := GetDuration(outputPath)
-
-	return title, duration, nil
+	return "", 0, fmt.Errorf("falha no download do YouTube no Railway após testar estratégias: %v", lastErr)
 }

@@ -1,38 +1,65 @@
 [
   {
-    "id": "6QRTW3",
-    "dj": "HDAJK6WF9MKN",
+    "id": "GNMWSD",
+    "dj": "SQ4ZW4HC3GWM",
     "state": {
-      "isPlaying": true,
-      "startedAt": 1784678959489,
+      "isPlaying": false,
+      "startedAt": 0,
       "seekOffset": 0,
-      "currentSong": "/musicas/9cb902c6-5976-4641-91a6-e068981dec5e.opus",
-      "duration": 146.338667
+      "currentSong": "",
+      "duration": 0
     },
     "repository": [
       {
-        "id": "52065bb6-c99a-458f-8ca9-435ae5da4bcc",
-        "title": "Metallica: Enter Sandman (Official Music Video)",
-        "filename": "52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
-        "url": "/musicas/52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
-        "duration": 330.914083
-      },
-      {
-        "id": "9cb902c6-5976-4641-91a6-e068981dec5e",
-        "title": "The Only Thing I Know For Real",
-        "filename": "9cb902c6-5976-4641-91a6-e068981dec5e.opus",
-        "url": "/musicas/9cb902c6-5976-4641-91a6-e068981dec5e.opus",
-        "duration": 146.338667
+        "id": "52bbcb08-c836-4c28-b97a-baf353ce1c6a",
+        "title": "You Can't Run From Me (from Cyberpunk: Edgerunners Season 2)",
+        "filename": "52bbcb08-c836-4c28-b97a-baf353ce1c6a.opus",
+        "url": "/musicas/52bbcb08-c836-4c28-b97a-baf353ce1c6a.opus",
+        "duration": 234.2875
       }
     ],
-    "playlist": [
+    "playlist": []
+  },
+  {
+    "id": "QFY9CL",
+    "dj": "EG5JUB3NWY86",
+    "state": {
+      "isPlaying": false,
+      "startedAt": 0,
+      "seekOffset": 0,
+      "currentSong": "",
+      "duration": 0
+    },
+    "repository": [
       {
-        "id": "9cb902c6-5976-4641-91a6-e068981dec5e",
-        "title": "The Only Thing I Know For Real",
-        "filename": "9cb902c6-5976-4641-91a6-e068981dec5e.opus",
-        "url": "/musicas/9cb902c6-5976-4641-91a6-e068981dec5e.opus",
-        "duration": 146.338667
+        "id": "d6a90409-6d0f-4358-b196-e42cfe9dbdf9",
+        "title": "You Can't Run From Me (from Cyberpunk: Edgerunners Season 2)",
+        "filename": "d6a90409-6d0f-4358-b196-e42cfe9dbdf9.opus",
+        "url": "/musicas/d6a90409-6d0f-4358-b196-e42cfe9dbdf9.opus",
+        "duration": 234.2875
       }
-    ]
+    ],
+    "playlist": []
+  },
+  {
+    "id": "APULUH",
+    "dj": "CZE7AUQ58PES",
+    "state": {
+      "isPlaying": false,
+      "startedAt": 0,
+      "seekOffset": 0,
+      "currentSong": "",
+      "duration": 0
+    },
+    "repository": [
+      {
+        "id": "66df5a30-cb0b-42f8-9a06-687d7ce57b6c",
+        "title": "You Can't Run From Me (from Cyberpunk: Edgerunners Season 2)",
+        "filename": "66df5a30-cb0b-42f8-9a06-687d7ce57b6c.opus",
+        "url": "/musicas/66df5a30-cb0b-42f8-9a06-687d7ce57b6c.opus",
+        "duration": 234.2875
+      }
+    ],
+    "playlist": []
   }
 ]

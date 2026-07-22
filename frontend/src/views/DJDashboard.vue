@@ -239,6 +239,7 @@ async function handleYouTubeDownload() {
   if (!url) return
   downloadingYT.value = true
   ytError.value = ''
+
   try {
     const track = await downloadFromYouTube(store.stationId, url, store.djToken)
     store.repository.push(track)
