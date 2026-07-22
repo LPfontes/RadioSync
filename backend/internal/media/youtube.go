@@ -41,34 +41,10 @@ func getCookiesFile() string {
 	return ""
 }
 
-func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
-	extractorArgs := "youtube:player_client=mweb,web"
-	cookiesPath := getCookiesFile()
-
-	// 1. Obter título do vídeo limpo
-	titleArgs := []string{
-		"--quiet",
-		"--no-warnings",
-		"--print", "%(title)s",
-		"--no-playlist",
-		"--extractor-args", extractorArgs,
-	}
-	if cookiesPath != "" {
-		titleArgs = append(titleArgs, "--cookies", cookiesPath)
-	}
-	titleArgs = append(titleArgs, youtubeURL)
-
-	titleCmd := exec.Command("yt-dlp", titleArgs...)
-	titleOut, _ := titleCmd.Output()
-	title := strings.TrimSpace(string(titleOut))
-	if title == "" {
-		title = "Vídeo do YouTube"
-	}
-
-	// 2. Definir template de saída adequado para conversão Opus
+func runYtDlpDownload(youtubeURL, outputPath, cookiesPath string) error {
 	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
+	extractorArgs := "youtube:player_client=android,ios,mweb,web"
 
-	// 3. Executar o download e conversão para .opus
 	downloadArgs := []string{
 		"-f", "ba/b",
 		"-x",
@@ -88,14 +64,51 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	cmd.Stderr = &stderr
 
 	if err := cmd.Run(); err != nil {
-		return "", 0, fmt.Errorf("falha ao baixar do YouTube com yt-dlp: %v | Log: %s", err, strings.TrimSpace(stderr.String()))
+		return fmt.Errorf("%v | %s", err, strings.TrimSpace(stderr.String()))
+	}
+	return nil
+}
+
+func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
+	cookiesPath := getCookiesFile()
+
+	// 1. Obter título do vídeo
+	titleArgs := []string{
+		"--quiet",
+		"--no-warnings",
+		"--print", "%(title)s",
+		"--no-playlist",
+		"--extractor-args", "youtube:player_client=android,ios,mweb,web",
+		youtubeURL,
+	}
+	titleCmd := exec.Command("yt-dlp", titleArgs...)
+	titleOut, _ := titleCmd.Output()
+	title := strings.TrimSpace(string(titleOut))
+	if title == "" {
+		title = "Vídeo do YouTube"
+	}
+
+	// 2. Tentar download com cookies (se existir cookies.txt)
+	var err error
+	if cookiesPath != "" {
+		err = runYtDlpDownload(youtubeURL, outputPath, cookiesPath)
+	} else {
+		err = fmt.Errorf("sem cookies.txt configurado")
+	}
+
+	// 3. Se falhar ou não houver cookies, tentar fallback sem cookies (cliente android/ios)
+	if err != nil {
+		errFallback := runYtDlpDownload(youtubeURL, outputPath, "")
+		if errFallback != nil {
+			if cookiesPath != "" {
+				return "", 0, fmt.Errorf("falha ao baixar do YouTube com cookies (%v) e fallback sem cookies (%v)", err, errFallback)
+			}
+			return "", 0, fmt.Errorf("falha ao baixar do YouTube: %v", errFallback)
+		}
 	}
 
 	// 4. Obter duração do arquivo .opus gerado
-	duration, err := GetDuration(outputPath)
-	if err != nil {
-		duration = 0
-	}
+	duration, _ := GetDuration(outputPath)
 
 	return title, duration, nil
 }
