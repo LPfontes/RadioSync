@@ -68,6 +68,45 @@
                   {{ downloadingYT ? 'Baixando...' : 'Baixar' }}
                 </button>
               </div>
+
+              <!-- Indicador e Botão de Cookies -->
+              <div class="flex items-center justify-between text-xs pt-1">
+                <span class="flex items-center gap-1 text-[11px]" :class="cookieStatus ? 'text-emerald-400' : 'text-zinc-500'">
+                  <span class="w-2 h-2 rounded-full" :class="cookieStatus ? 'bg-emerald-500' : 'bg-zinc-600'"></span>
+                  {{ cookieStatus ? 'Cookies do YouTube ativados' : 'Sem cookies do YouTube' }}
+                </span>
+                <button @click="showCookieModal = !showCookieModal" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline flex items-center gap-1">
+                  <Key class="w-3 h-3 text-amber-400" />
+                  {{ showCookieModal ? 'Fechar' : 'Configurar cookies.txt' }}
+                </button>
+              </div>
+
+              <!-- Form/Card de Importação de Cookies -->
+              <div v-if="showCookieModal" class="p-3 bg-zinc-900/90 border border-zinc-700/80 rounded-lg space-y-2.5 mt-2">
+                <div class="flex items-center justify-between">
+                  <h4 class="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
+                    <Key class="w-3.5 h-3.5 text-amber-400" />
+                    Importar cookies.txt do YouTube
+                  </h4>
+                </div>
+                <p class="text-[11px] text-zinc-400 leading-tight">
+                  Selecione o arquivo <code class="text-amber-300">cookies.txt</code> exportado do seu navegador ou cole o conteúdo abaixo:
+                </p>
+
+                <div class="flex flex-col gap-2">
+                  <input type="file" ref="cookieFileRef" accept=".txt" @change="onCookieFileSelected" class="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-zinc-700 file:text-zinc-300 hover:file:bg-zinc-600 cursor-pointer" />
+                  <textarea v-model="cookieContent" rows="3" placeholder="Cole o conteúdo do cookies.txt aqui..." class="w-full bg-zinc-800 rounded p-2 text-[10px] font-mono text-zinc-300 outline-none focus:ring-1 focus:ring-amber-500 resize-none"></textarea>
+                </div>
+
+                <div class="flex items-center justify-between pt-1">
+                  <span v-if="cookieMsg" class="text-[11px]" :class="cookieMsg.includes('sucesso') ? 'text-emerald-400' : 'text-red-400'">{{ cookieMsg }}</span>
+                  <div v-else></div>
+                  <button @click="handleSaveCookies" :disabled="savingCookies || !cookieContent.trim()" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors">
+                    {{ savingCookies ? 'Salvando...' : 'Salvar Cookies' }}
+                  </button>
+                </div>
+              </div>
+
               <p v-if="ytError" class="text-xs text-red-400">{{ ytError }}</p>
             </div>
 
@@ -139,9 +178,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube } from 'lucide-vue-next'
+import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
-import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube } from '../services/api'
+import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, saveYouTubeCookies, getCookiesStatus } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
@@ -160,6 +199,13 @@ const uploadError = ref('')
 const youtubeUrl = ref('')
 const downloadingYT = ref(false)
 const ytError = ref('')
+
+const showCookieModal = ref(false)
+const cookieContent = ref('')
+const cookieFileRef = ref(null)
+const savingCookies = ref(false)
+const cookieMsg = ref('')
+const cookieStatus = ref(false)
 
 const globalTracks = ref([])
 const loadingGlobal = ref(false)
@@ -182,6 +228,7 @@ onMounted(async () => {
     }
     saveStation(id, 'dj', store.djToken)
     connect()
+    checkCookiesStatus()
     try {
       const repo = await getRepository(id, store.djToken)
       store.setRepository(repo)
@@ -192,6 +239,44 @@ onMounted(async () => {
     }
   }
 })
+
+async function checkCookiesStatus() {
+  try {
+    const res = await getCookiesStatus(store.stationId)
+    cookieStatus.value = res.hasCookies
+  } catch {}
+}
+
+function onCookieFileSelected(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (evt) => {
+    cookieContent.value = evt.target.result
+  }
+  reader.readAsText(file)
+}
+
+async function handleSaveCookies() {
+  if (!cookieContent.value.trim()) return
+  savingCookies.value = true
+  cookieMsg.value = ''
+  try {
+    const res = await saveYouTubeCookies(store.stationId, cookieContent.value, store.djToken)
+    cookieMsg.value = res.message || 'Cookies salvos com sucesso!'
+    cookieStatus.value = true
+    cookieContent.value = ''
+    if (cookieFileRef.value) cookieFileRef.value.value = ''
+    setTimeout(() => {
+      showCookieModal.value = false
+      cookieMsg.value = ''
+    }, 1500)
+  } catch (e) {
+    cookieMsg.value = e?.response?.data || e.message || 'Erro ao salvar cookies'
+  } finally {
+    savingCookies.value = false
+  }
+}
 
 async function fetchGlobalLibrary() {
   loadingGlobal.value = true

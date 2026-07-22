@@ -75,4 +75,16 @@ export async function removeTrackFromStationAdmin(stationId, trackId) {
   return data
 }
 
+export async function saveYouTubeCookies(stationId, cookiesContent, token) {
+  const { data } = await api.post(`/api/v1/stations/${stationId}/cookies`, { content: cookiesContent }, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  return data
+}
+
+export async function getCookiesStatus(stationId) {
+  const { data } = await api.get(`/api/v1/stations/${stationId}/cookies/status`)
+  return data
+}
+
 export default api

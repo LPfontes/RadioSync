@@ -54,6 +54,8 @@ func main() {
 		r.Get("/{stationId}", handler.GetStation)
 		r.Post("/{stationId}/upload", handler.UploadMusic)
 		r.Post("/{stationId}/youtube", handler.DownloadYouTubeHandler)
+		r.Post("/{stationId}/cookies", handler.UploadCookiesHandler)
+		r.Get("/{stationId}/cookies/status", handler.GetCookiesStatusHandler)
 		r.Get("/{stationId}/repository", handler.GetRepository)
 		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
 		r.Get("/{stationId}/library", handler.GetGlobalLibrary)
