@@ -2,9 +2,11 @@ package handler
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"radio-backend/internal/model"
 
@@ -192,5 +194,33 @@ func RemoveTrackFromStationAdmin(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "música removida da estação",
+	})
+}
+
+type SaveCookiesRequest struct {
+	Content string `json:"content"`
+}
+
+func SaveCookiesAdmin(w http.ResponseWriter, r *http.Request) {
+	var req SaveCookiesRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Content) == "" {
+		http.Error(w, "conteúdo de cookies.txt inválido ou vazio", http.StatusBadRequest)
+		return
+	}
+
+	dir := dataDir()
+	_ = os.MkdirAll(dir, 0755)
+	cookiesPath := filepath.Join(dir, "cookies.txt")
+
+	if err := os.WriteFile(cookiesPath, []byte(req.Content), 0644); err != nil {
+		http.Error(w, fmt.Sprintf("erro ao salvar cookies.txt: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "arquivo cookies.txt salvo com sucesso no servidor",
+		"path":    cookiesPath,
 	})
 }
