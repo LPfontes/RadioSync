@@ -32,20 +32,23 @@ func getMusicDir() string {
 
 func GetAllLibraryTracks() []model.Track {
 	trackMap := make(map[string]model.Track)
+	dir := getMusicDir()
 
 	stationsMu.RLock()
 	for _, s := range stations {
 		s.RLock()
 		for _, t := range s.Repository {
-			if _, exists := trackMap[t.ID]; !exists {
-				trackMap[t.ID] = t
+			filePath := filepath.Join(dir, t.Filename)
+			if _, err := os.Stat(filePath); err == nil {
+				if _, exists := trackMap[t.ID]; !exists {
+					trackMap[t.ID] = t
+				}
 			}
 		}
 		s.RUnlock()
 	}
 	stationsMu.RUnlock()
 
-	dir := getMusicDir()
 	entries, err := os.ReadDir(dir)
 	if err == nil {
 		for _, e := range entries {

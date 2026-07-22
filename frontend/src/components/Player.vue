@@ -14,6 +14,14 @@
     </div>
 
     <div v-else class="space-y-3">
+      <!-- Nome da Música Atual -->
+      <div class="flex items-center gap-2 pb-1 border-b border-zinc-700/50">
+        <Music class="w-4 h-4 text-emerald-400" :class="{ 'animate-pulse': store.state.isPlaying }" />
+        <span class="text-sm font-semibold text-zinc-100 truncate flex-1" :title="currentTrackTitle">
+          {{ currentTrackTitle }}
+        </span>
+      </div>
+
       <div class="flex items-center gap-3">
         <button @click="togglePlay" class="p-2 rounded-full bg-emerald-600 hover:bg-emerald-500 transition-colors shrink-0" :disabled="!store.state.currentSong">
           <Play v-if="!store.state.isPlaying" class="w-5 h-5 text-white" />
@@ -58,7 +66,7 @@
 
 <script setup>
 import { ref, computed, watch } from 'vue'
-import { Play, Pause, Volume, Volume1, Volume2, VolumeX, Repeat } from 'lucide-vue-next'
+import { Play, Pause, Volume, Volume1, Volume2, VolumeX, Repeat, Music } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { usePlayer } from '../composables/usePlayer'
 
@@ -74,6 +82,22 @@ const volume = ref(parseInt(localStorage.getItem(VOLUME_KEY) || '80'))
 const muted = ref(false)
 const repeat = ref(localStorage.getItem(REPEAT_KEY) === 'true')
 const previousVolume = ref(80)
+
+const currentTrackTitle = computed(() => {
+  if (store.playlist && store.playlist.length > 0) {
+    return store.playlist[0].title
+  }
+  if (store.repository && store.repository.length > 0 && store.state.currentSong) {
+    const found = store.repository.find(t => t.url === store.state.currentSong)
+    if (found) return found.title
+  }
+  if (store.state.currentSong) {
+    const parts = store.state.currentSong.split('/')
+    const filename = parts[parts.length - 1]
+    return filename ? filename.replace('.opus', '') : 'Música em reprodução'
+  }
+  return 'Música em reprodução'
+})
 
 const progressPercent = computed(() => {
   if (!duration.value) return 0

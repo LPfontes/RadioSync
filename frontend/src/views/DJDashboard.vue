@@ -56,7 +56,22 @@
               </div>
             </div>
 
-            <div class="space-y-1">
+            <!-- Download do YouTube -->
+            <div class="space-y-2 pt-2 border-t border-zinc-700/50">
+              <h3 class="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
+                <Youtube class="w-4 h-4 text-red-500" />
+                Baixar do YouTube (yt-dlp)
+              </h3>
+              <div class="flex gap-2">
+                <input v-model="youtubeUrl" placeholder="URL do vídeo (ex: https://youtu.be/...)" @keyup.enter="handleYouTubeDownload" class="flex-1 bg-zinc-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-red-500" />
+                <button @click="handleYouTubeDownload" :disabled="downloadingYT || !youtubeUrl.trim()" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:bg-zinc-600 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors whitespace-nowrap">
+                  {{ downloadingYT ? 'Baixando...' : 'Baixar' }}
+                </button>
+              </div>
+              <p v-if="ytError" class="text-xs text-red-400">{{ ytError }}</p>
+            </div>
+
+            <div class="space-y-1 pt-2 border-t border-zinc-700/50">
               <p class="text-xs text-zinc-500 mb-2">Músicas desta Estação (clique para adicionar à playlist)</p>
               <div v-if="store.repository.length === 0" class="text-zinc-500 text-xs text-center py-4">
                 Nenhuma música no repositório local
@@ -124,9 +139,9 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw } from 'lucide-vue-next'
+import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
-import { uploadMusic, getRepository, getGlobalLibrary } from '../services/api'
+import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
@@ -141,6 +156,10 @@ const fileInputRef = ref(null)
 const selectedFile = ref(null)
 const uploading = ref(false)
 const uploadError = ref('')
+
+const youtubeUrl = ref('')
+const downloadingYT = ref(false)
+const ytError = ref('')
 
 const globalTracks = ref([])
 const loadingGlobal = ref(false)
@@ -212,6 +231,24 @@ async function handleUpload() {
     uploadError.value = typeof msg === 'string' ? msg : 'Erro no upload'
   } finally {
     uploading.value = false
+  }
+}
+
+async function handleYouTubeDownload() {
+  const url = youtubeUrl.value.trim()
+  if (!url) return
+  downloadingYT.value = true
+  ytError.value = ''
+  try {
+    const track = await downloadFromYouTube(store.stationId, url, store.djToken)
+    store.repository.push(track)
+    youtubeUrl.value = ''
+    if (globalTracks.value.length > 0) fetchGlobalLibrary()
+  } catch (e) {
+    const msg = e?.response?.data || e.message || 'Erro no download do YouTube'
+    ytError.value = typeof msg === 'string' ? msg : 'Erro ao baixar do YouTube'
+  } finally {
+    downloadingYT.value = false
   }
 }
 

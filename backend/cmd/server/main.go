@@ -53,6 +53,7 @@ func main() {
 		r.Post("/", handler.CreateStation)
 		r.Get("/{stationId}", handler.GetStation)
 		r.Post("/{stationId}/upload", handler.UploadMusic)
+		r.Post("/{stationId}/youtube", handler.DownloadYouTubeHandler)
 		r.Get("/{stationId}/repository", handler.GetRepository)
 		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
 		r.Get("/{stationId}/library", handler.GetGlobalLibrary)
@@ -60,6 +61,13 @@ func main() {
 
 	r.Get("/api/v1/library", handler.GetGlobalLibrary)
 	r.Get("/api/v1/debug", handler.DebugHandler)
+
+	r.Route("/api/v1/admin", func(r chi.Router) {
+		r.Get("/stations", handler.GetAdminStations)
+		r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
+		r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
+		r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
+	})
 
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)
 

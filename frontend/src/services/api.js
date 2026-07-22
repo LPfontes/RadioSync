@@ -31,6 +31,13 @@ export async function uploadMusic(stationId, file, token) {
   return data
 }
 
+export async function downloadFromYouTube(stationId, youtubeUrl, token) {
+  const { data } = await api.post(`/api/v1/stations/${stationId}/youtube`, { url: youtubeUrl }, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  return data
+}
+
 export async function getRepository(stationId, token) {
   const { data } = await api.get(`/api/v1/stations/${stationId}/repository`, {
     headers: { 'Authorization': `Bearer ${token}` },
@@ -45,6 +52,26 @@ export async function listMusicFiles(stationId) {
 
 export async function getGlobalLibrary() {
   const { data } = await api.get('/api/v1/library')
+  return data
+}
+
+export async function getAdminStations() {
+  const { data } = await api.get('/api/v1/admin/stations')
+  return data
+}
+
+export async function deleteStationAdmin(stationId) {
+  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}`)
+  return data
+}
+
+export async function purgeOrphanTracksAdmin() {
+  const { data } = await api.post('/api/v1/admin/purge-orphans')
+  return data
+}
+
+export async function removeTrackFromStationAdmin(stationId, trackId) {
+  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}/tracks/${trackId}`)
   return data
 }
 

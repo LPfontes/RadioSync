@@ -1,0 +1,31 @@
+[
+  {
+    "id": "6QRTW3",
+    "dj": "HDAJK6WF9MKN",
+    "state": {
+      "isPlaying": true,
+      "startedAt": 1784678450229,
+      "seekOffset": 85.221,
+      "currentSong": "/musicas/52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
+      "duration": 330.914083
+    },
+    "repository": [
+      {
+        "id": "52065bb6-c99a-458f-8ca9-435ae5da4bcc",
+        "title": "Metallica: Enter Sandman (Official Music Video)",
+        "filename": "52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
+        "url": "/musicas/52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
+        "duration": 330.914083
+      }
+    ],
+    "playlist": [
+      {
+        "id": "52065bb6-c99a-458f-8ca9-435ae5da4bcc",
+        "title": "Metallica: Enter Sandman (Official Music Video)",
+        "filename": "52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
+        "url": "/musicas/52065bb6-c99a-458f-8ca9-435ae5da4bcc.opus",
+        "duration": 330.914083
+      }
+    ]
+  }
+]

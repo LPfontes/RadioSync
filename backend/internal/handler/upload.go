@@ -113,9 +113,17 @@ func GetRepository(w http.ResponseWriter, r *http.Request) {
 	}
 
 	station.RLock()
-	repo := station.Repository
+	rawRepo := station.Repository
 	station.RUnlock()
 
+	dir := getMusicDir()
+	validRepo := make([]model.Track, 0, len(rawRepo))
+	for _, t := range rawRepo {
+		if _, err := os.Stat(filepath.Join(dir, t.Filename)); err == nil {
+			validRepo = append(validRepo, t)
+		}
+	}
+
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(repo)
+	json.NewEncoder(w).Encode(validRepo)
 }

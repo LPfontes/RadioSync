@@ -16,6 +16,12 @@ type Hub struct {
 	OnMessage  func(client *Client, msg []byte)
 }
 
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	return len(h.Clients)
+}
+
 func NewHub(stationID string) *Hub {
 	return &Hub{
 		StationID:  stationID,

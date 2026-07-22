@@ -35,6 +35,8 @@
 - 🎵 **Upload e Transcodificação Automática**:
   - Aceita múltiplos formatos de áudio (`.mp3`, `.wav`, `.ogg`, `.flac`, `.aac`, `.m4a`).
   - Conversão em tempo real no servidor para **Opus (`.opus`)**, reduzindo o consumo de banda e otimizando o stream de áudio.
+- 🔴 **Download de Músicas do YouTube (yt-dlp)**:
+  - Permite baixar o áudio de qualquer vídeo do YouTube colando o link no painel do DJ. O servidor usa o **yt-dlp** para extrair a melhor qualidade de áudio e converter diretamente em Opus.
 - 🔄 **Sincronização em Tempo Real (WebSockets)**:
   - Eventos de `PLAY`, `PAUSE`, `SEEK` e `NEXT_TRACK` retransmitidos instantaneamente para todos os ouvintes.
   - Sincronização automática do tempo decorrido ao entrar em uma sala em andamento.
@@ -54,7 +56,7 @@
 ### Pró-requisitos
 - **Go** >= 1.22
 - **Node.js** >= 18 e **npm**
-- **FFmpeg** e **FFprobe** instalados e disponíveis no `PATH` do sistema.
+- **FFmpeg**, **FFprobe** e **yt-dlp** instalados e disponíveis no `PATH` do sistema.
 
 ---
 
@@ -79,7 +81,7 @@ npm run dev
 
 ### 2. Executando via Docker (Produção / Produção Local)
 
-O projeto possui um [Dockerfile](file:///c:/Users/lpfon/Downloads/radio/Dockerfile) multi-stage que compila o frontend, o backend e instala as dependências do FFmpeg na imagem final.
+O projeto possui um [Dockerfile](file:///c:/Users/lpfon/Downloads/radio/Dockerfile) multi-stage que compila o frontend, o backend e instala as dependências do FFmpeg e yt-dlp na imagem final.
 
 #### **Construir a imagem Docker:**
 ```bash
@@ -116,10 +118,18 @@ As principais variáveis configuráveis no servidor Go:
 - `POST /api/v1/stations` — Cria uma nova estação e retorna `{ stationId, djToken }`.
 - `GET /api/v1/stations/{stationId}` — Retorna o estado atual, a playlist e o repositório da estação.
 - `POST /api/v1/stations/{stationId}/upload` — Realiza upload de arquivo de áudio (Requer header `Authorization: Bearer <djToken>`).
+- `POST /api/v1/stations/{stationId}/youtube` — Baixa e converte o áudio de um link do YouTube via `yt-dlp` (Requer header `Authorization: Bearer <djToken>`).
 - `GET /api/v1/stations/{stationId}/repository` — Lista as faixas do repositório da estação (Requer header `Authorization: Bearer <djToken>`).
 - `GET /api/v1/stations/{stationId}/musicas` — Lista os arquivos `.opus` existentes no servidor.
 - `GET /api/v1/library` — Lista todas as músicas da biblioteca global salvas no servidor.
 - `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência.
+
+### **Administração (`/api/v1/admin`)**
+
+- `GET /api/v1/admin/stations` — Retorna resumo completo de todas as estações e métricas do `stations.json`.
+- `DELETE /api/v1/admin/stations/{stationId}` — Exclui uma estação permanentemente e salva o `stations.json`.
+- `POST /api/v1/admin/purge-orphans` — Purga todos os metadados de faixas inexistentes do `stations.json`.
+- `DELETE /api/v1/admin/stations/{stationId}/tracks/{trackId}` — Remove uma faixa do repositório da estação.
 
 ### **WebSockets (`/ws`)**
 

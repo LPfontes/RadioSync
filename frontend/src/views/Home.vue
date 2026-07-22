@@ -44,6 +44,13 @@
         </div>
       </div>
 
+      <div class="text-center pt-2">
+        <router-link to="/admin" class="text-xs text-zinc-400 hover:text-emerald-400 transition-colors flex items-center justify-center gap-1.5">
+          <Shield class="w-3.5 h-3.5" />
+          Painel de Administração
+        </router-link>
+      </div>
+
       <p v-if="error" class="text-red-400 text-sm text-center">{{ error }}</p>
     </div>
   </div>
@@ -52,7 +59,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { X } from 'lucide-vue-next'
+import { X, Shield } from 'lucide-vue-next'
 import { createStation, getStation } from '../services/api'
 import { useStationStore } from '../stores/station'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
