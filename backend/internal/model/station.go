@@ -183,6 +183,43 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 			}
 		}
 
+	case "PLAY_PLAYLIST_TRACK":
+		var data struct {
+			TrackID string `json:"trackId"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err != nil {
+			return
+		}
+
+		idx := -1
+		for i, t := range s.Playlist {
+			if t.ID == data.TrackID {
+				idx = i
+				break
+			}
+		}
+
+		if idx >= 0 {
+			targetTrack := s.Playlist[idx]
+			newPlaylist := make([]Track, 0, len(s.Playlist))
+			newPlaylist = append(newPlaylist, targetTrack)
+			for i, t := range s.Playlist {
+				if i != idx {
+					newPlaylist = append(newPlaylist, t)
+				}
+			}
+			s.Playlist = newPlaylist
+
+			s.State.CurrentSong = targetTrack.URL
+			s.State.Duration = targetTrack.Duration
+			s.State.SeekOffset = 0
+			s.State.StartedAt = time.Now().UnixMilli()
+			s.State.IsPlaying = true
+
+			s.broadcastState()
+			s.broadcastPlaylist()
+		}
+
 	case "REMOVE_FROM_PLAYLIST":
 		var data struct {
 			TrackID string `json:"trackId"`

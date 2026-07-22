@@ -159,14 +159,28 @@
           <div v-if="store.playlist.length === 0" class="text-zinc-500 text-sm text-center py-4">
             Playlist vazia — adicione músicas do repositório ou da biblioteca global
           </div>
-          <div v-for="(track, i) in store.playlist" :key="track.id" class="flex items-center gap-3 py-2 border-b border-zinc-700 last:border-0">
-            <button @click="removeFromPlaylist(track.id)" class="text-red-400 hover:text-red-300">
+          <div v-for="(track, i) in store.playlist" :key="track.id"
+            @click="playPlaylistTrack(track.id)"
+            class="flex items-center gap-2.5 py-2 px-2 border-b border-zinc-700/50 last:border-0 rounded-lg hover:bg-zinc-700/60 transition-colors cursor-pointer group"
+            :class="{ 'bg-emerald-950/40 border-emerald-800/40': i === 0 && store.state.isPlaying }">
+            
+            <button @click.stop="removeFromPlaylist(track.id)" class="text-red-400 hover:text-red-300 p-0.5 shrink-0" title="Remover da playlist">
               <X class="w-3.5 h-3.5" />
             </button>
-            <span class="text-xs text-zinc-500 w-4">{{ i + 1 }}</span>
-            <span class="text-sm flex-1 truncate">{{ track.title }}</span>
-            <button @click="skipToNext" v-if="i === 0" class="text-xs text-emerald-500 hover:text-emerald-400" title="Pular música">
-              <SkipForward class="w-4 h-4" />
+            
+            <div class="w-4 flex items-center justify-center shrink-0">
+              <Play v-if="i === 0 && store.state.isPlaying" class="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
+              <span v-else class="text-xs text-zinc-500 group-hover:text-zinc-300 font-mono">{{ i + 1 }}</span>
+            </div>
+
+            <span class="text-sm flex-1 truncate" :class="i === 0 ? 'text-emerald-400 font-semibold' : 'text-zinc-200 group-hover:text-white'">
+              {{ track.title }}
+            </span>
+
+            <span v-if="track.duration" class="text-[10px] text-zinc-500 shrink-0">{{ formatTime(track.duration) }}</span>
+
+            <button @click.stop="playPlaylistTrack(track.id)" class="p-1 rounded text-zinc-400 group-hover:text-emerald-400 hover:bg-zinc-600/50 transition-colors shrink-0" title="Tocar esta música agora">
+              <Play class="w-3.5 h-3.5" />
             </button>
           </div>
         </div>
@@ -178,7 +192,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key } from 'lucide-vue-next'
+import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, saveYouTubeCookies, getCookiesStatus } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -344,6 +358,10 @@ function addToPlaylist(trackId) {
 
 function addGlobalTrack(track) {
   send({ type: 'ADD_TO_PLAYLIST', data: { trackId: track.id, track } })
+}
+
+function playPlaylistTrack(trackId) {
+  send({ type: 'PLAY_PLAYLIST_TRACK', data: { trackId } })
 }
 
 function removeFromPlaylist(trackId) {
