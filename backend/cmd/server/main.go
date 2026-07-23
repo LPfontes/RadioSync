@@ -69,6 +69,7 @@ func main() {
 		r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
 		r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
 		r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
+		r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
 		r.Post("/cookies", handler.SaveCookiesAdmin)
 	})
 

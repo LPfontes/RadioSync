@@ -1,0 +1,29 @@
+# Runtime data and dynamic station state
+data/
+data/*
+
+# Audio uploads & music files
+musicas/
+musicas/*
+*.opus
+*.mp3
+*.wav
+*.m4a
+*.flac
+*.aac
+
+# Environment files
+.env
+.env.local
+
+# Dependencies & Build artifacts
+node_modules/
+dist/
+frontend/dist/
+*.exe
+
+# OS & Editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/

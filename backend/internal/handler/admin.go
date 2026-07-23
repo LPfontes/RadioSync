@@ -224,3 +224,49 @@ func SaveCookiesAdmin(w http.ResponseWriter, r *http.Request) {
 		"path":    cookiesPath,
 	})
 }
+
+type RenameTrackRequest struct {
+	Title string `json:"title"`
+}
+
+func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
+	trackID := chi.URLParam(r, "trackId")
+	var req RenameTrackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || strings.TrimSpace(req.Title) == "" {
+		http.Error(w, "título inválido ou vazio", http.StatusBadRequest)
+		return
+	}
+
+	newTitle := strings.TrimSpace(req.Title)
+	updatedCount := 0
+
+	stationsMu.Lock()
+	for _, s := range stations {
+		s.Lock()
+		for i := range s.Repository {
+			if s.Repository[i].ID == trackID || s.Repository[i].Filename == trackID || s.Repository[i].Filename == trackID+".opus" {
+				s.Repository[i].Title = newTitle
+				updatedCount++
+			}
+		}
+		for i := range s.Playlist {
+			if s.Playlist[i].ID == trackID || s.Playlist[i].Filename == trackID || s.Playlist[i].Filename == trackID+".opus" {
+				s.Playlist[i].Title = newTitle
+			}
+		}
+		s.Unlock()
+	}
+	stationsMu.Unlock()
+
+	go SaveStations()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "título da música atualizado com sucesso",
+		"trackId": trackID,
+		"title":   newTitle,
+		"updated": updatedCount,
+	})
+}
+

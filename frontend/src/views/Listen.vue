@@ -2,7 +2,8 @@
   <div class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
     <header class="border-b border-zinc-800 px-4 py-3">
       <div class="max-w-2xl mx-auto flex items-center justify-between">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2.5">
+          <Disc class="w-5 h-5 text-emerald-500" />
           <span class="font-bold text-emerald-500">RadioSync</span>
           <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
         </div>
@@ -54,7 +55,7 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Radio, Copy } from 'lucide-vue-next'
+import { Radio, Copy, Disc } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { getStation } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -108,6 +109,9 @@ onMounted(async () => {
       const data = await getStation(id)
       if (data.state) store.setState(data.state)
       if (data.playlist) store.setPlaylist(data.playlist)
+      if (route.query.autoJoin) {
+        enterStation()
+      }
     } catch (e) {
       removeStation(id)
       store.reset()

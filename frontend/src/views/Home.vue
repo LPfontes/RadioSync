@@ -1,9 +1,14 @@
 <template>
   <div class="min-h-screen bg-zinc-900 text-zinc-100 flex items-start justify-center pt-12">
     <div class="max-w-md w-full mx-4 space-y-6">
-      <div class="text-center space-y-2">
-        <h1 class="text-3xl font-bold">RadioSync</h1>
-        <p class="text-zinc-400">Rádio web sincronizada em tempo real</p>
+      <div class="text-center space-y-2 flex flex-col items-center">
+        <div class="w-16 h-16 rounded-2xl bg-emerald-600/20 border border-emerald-500/30 flex items-center justify-center text-emerald-400 shadow-lg shadow-emerald-950/50 mb-1">
+          <Disc class="w-9 h-9 animate-spin-slow" />
+        </div>
+        <h1 class="text-3xl font-bold flex items-center justify-center gap-2">
+          <span>RadioSync</span>
+        </h1>
+        <p class="text-zinc-400 text-sm">Rádio web sincronizada em tempo real</p>
       </div>
 
       <div v-if="savedStations.length > 0" class="bg-zinc-800 rounded-lg p-4 space-y-2">
@@ -59,7 +64,7 @@
 <script setup>
 import { ref } from 'vue'
 import { useRouter } from 'vue-router'
-import { X, Shield } from 'lucide-vue-next'
+import { X, Shield, Disc } from 'lucide-vue-next'
 import { createStation, getStation } from '../services/api'
 import { useStationStore } from '../stores/station'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'

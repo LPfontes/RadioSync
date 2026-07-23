@@ -2,7 +2,8 @@
   <div class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
     <header class="border-b border-zinc-800 px-4 py-3">
       <div class="max-w-4xl mx-auto flex items-center justify-between">
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-2.5">
+          <Disc class="w-5 h-5 text-emerald-500" />
           <span class="font-bold text-emerald-500">RadioSync — DJ</span>
           <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
         </div>
@@ -192,7 +193,7 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play } from 'lucide-vue-next'
+import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play, Disc } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, saveYouTubeCookies, getCookiesStatus } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
