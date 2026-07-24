@@ -59,6 +59,7 @@ func main() {
 		r.Get("/{stationId}/repository", handler.GetRepository)
 		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
 		r.Get("/{stationId}/library", handler.GetGlobalLibrary)
+		r.Put("/{stationId}/tracks/{trackId}", handler.UpdateTrackMetadata)
 	})
 
 	r.Get("/api/v1/library", handler.GetGlobalLibrary)

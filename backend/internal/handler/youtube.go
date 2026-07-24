@@ -19,7 +19,9 @@ import (
 )
 
 type YouTubeDownloadRequest struct {
-	URL string `json:"url"`
+	URL      string `json:"url"`
+	Category string `json:"category,omitempty"`
+	Theme    string `json:"theme,omitempty"`
 }
 
 func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
@@ -62,6 +64,8 @@ func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
 		Filename: trackID + ".opus",
 		URL:      fmt.Sprintf("/musicas/%s.opus", trackID),
 		Duration: duration,
+		Category: strings.TrimSpace(req.Category),
+		Theme:    strings.TrimSpace(req.Theme),
 	}
 
 	station.Lock()

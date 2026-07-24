@@ -2,6 +2,7 @@ package model
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"sync"
 	"time"
@@ -19,23 +20,35 @@ type PlaybackState struct {
 	Duration    float64 `json:"duration"`
 }
 
+type SongSuggestion struct {
+	ID          string `json:"id"`
+	TrackID     string `json:"trackId,omitempty"`
+	Title       string `json:"title"`
+	URL         string `json:"url,omitempty"`
+	SuggestedBy string `json:"suggestedBy"`
+	CreatedAt   int64  `json:"createdAt"`
+	Status      string `json:"status"` // "pending", "approved", "rejected"
+}
+
 type Station struct {
-	ID         string
-	DJ         string
-	Hub        *ws.Hub
-	State      *PlaybackState
-	Repository []Track
-	Playlist   []Track
-	mu         sync.RWMutex
+	ID          string
+	DJ          string
+	Hub         *ws.Hub
+	State       *PlaybackState
+	Repository  []Track
+	Playlist    []Track
+	Suggestions []SongSuggestion
+	mu          sync.RWMutex
 }
 
 func NewStation(id, dj string) *Station {
 	s := &Station{
-		ID:         id,
-		DJ:         dj,
-		State:      &PlaybackState{},
-		Repository: make([]Track, 0),
-		Playlist:   make([]Track, 0),
+		ID:          id,
+		DJ:          dj,
+		State:       &PlaybackState{},
+		Repository:  make([]Track, 0),
+		Playlist:    make([]Track, 0),
+		Suggestions: make([]SongSuggestion, 0),
 	}
 	s.Hub = ws.NewHub(id)
 	go s.Hub.Run()
@@ -62,6 +75,11 @@ type PlaylistMsg struct {
 	Playlist []Track `json:"playlist"`
 }
 
+type SuggestionsMsg struct {
+	Type        string           `json:"type"`
+	Suggestions []SongSuggestion `json:"suggestions"`
+}
+
 func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	var incoming IncomingMessage
 	if err := json.Unmarshal(msg, &incoming); err != nil {
@@ -84,6 +102,55 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 		case client.Send <- data:
 		default:
 		}
+		return
+	}
+
+	if incoming.Type == "SUGGEST_TRACK" {
+		var data struct {
+			TrackID     string `json:"trackId"`
+			Title       string `json:"title"`
+			URL         string `json:"url"`
+			SuggestedBy string `json:"suggestedBy"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err != nil {
+			return
+		}
+		s.Lock()
+		defer s.Unlock()
+
+		if data.SuggestedBy == "" {
+			data.SuggestedBy = "Ouvinte Anônimo"
+		}
+		if data.Title == "" && data.TrackID != "" {
+			for _, t := range s.Repository {
+				if t.ID == data.TrackID {
+					data.Title = t.Title
+					data.URL = t.URL
+					break
+				}
+			}
+			if data.Title == "" && TrackResolver != nil {
+				if t, ok := TrackResolver(data.TrackID); ok {
+					data.Title = t.Title
+					data.URL = t.URL
+				}
+			}
+		}
+		if data.Title == "" {
+			data.Title = "Música Sugerida"
+		}
+
+		sug := SongSuggestion{
+			ID:          fmt.Sprintf("sug_%d", time.Now().UnixNano()),
+			TrackID:     data.TrackID,
+			Title:       data.Title,
+			URL:         data.URL,
+			SuggestedBy: data.SuggestedBy,
+			CreatedAt:   time.Now().UnixMilli(),
+			Status:      "pending",
+		}
+		s.Suggestions = append(s.Suggestions, sug)
+		s.broadcastSuggestions()
 		return
 	}
 
@@ -234,6 +301,87 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 				return
 			}
 		}
+
+	case "APPROVE_SUGGESTION":
+		var data struct {
+			SuggestionID string `json:"suggestionId"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err != nil {
+			return
+		}
+		idx := -1
+		for i, sug := range s.Suggestions {
+			if sug.ID == data.SuggestionID {
+				idx = i
+				break
+			}
+		}
+		if idx >= 0 {
+			sug := s.Suggestions[idx]
+			s.Suggestions = append(s.Suggestions[:idx], s.Suggestions[idx+1:]...)
+
+			var targetTrack Track
+			found := false
+
+			if sug.TrackID != "" {
+				for _, t := range s.Repository {
+					if t.ID == sug.TrackID {
+						targetTrack = t
+						found = true
+						break
+					}
+				}
+				if !found && TrackResolver != nil {
+					if t, ok := TrackResolver(sug.TrackID); ok {
+						targetTrack = t
+						found = true
+					}
+				}
+			}
+
+			if !found {
+				targetTrack = Track{
+					ID:       sug.ID,
+					Title:    sug.Title,
+					URL:      sug.URL,
+					Filename: "",
+					Duration: 0,
+				}
+			}
+
+			s.Playlist = append(s.Playlist, targetTrack)
+			if len(s.Playlist) == 1 {
+				s.State.CurrentSong = targetTrack.URL
+				s.State.Duration = targetTrack.Duration
+				s.State.SeekOffset = 0
+				s.State.StartedAt = time.Now().UnixMilli()
+				s.State.IsPlaying = true
+			}
+			s.broadcastPlaylist()
+			if len(s.Playlist) == 1 {
+				s.broadcastState()
+			}
+			s.broadcastSuggestions()
+		}
+
+	case "REJECT_SUGGESTION":
+		var data struct {
+			SuggestionID string `json:"suggestionId"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err != nil {
+			return
+		}
+		for i, sug := range s.Suggestions {
+			if sug.ID == data.SuggestionID {
+				s.Suggestions = append(s.Suggestions[:i], s.Suggestions[i+1:]...)
+				s.broadcastSuggestions()
+				break
+			}
+		}
+
+	case "CLEAR_SUGGESTIONS":
+		s.Suggestions = make([]SongSuggestion, 0)
+		s.broadcastSuggestions()
 	}
 }
 
@@ -255,6 +403,13 @@ func (s *Station) broadcastPlaylist() {
 	})
 }
 
+func (s *Station) broadcastSuggestions() {
+	s.Hub.BroadcastJSON(SuggestionsMsg{
+		Type:        "SUGGESTIONS_UPDATED",
+		Suggestions: s.Suggestions,
+	})
+}
+
 func (s *Station) calcPosition() float64 {
 	if s.State.IsPlaying {
 		elapsed := float64(time.Now().UnixMilli()-s.State.StartedAt) / 1000
@@ -262,3 +417,4 @@ func (s *Station) calcPosition() float64 {
 	}
 	return s.State.SeekOffset
 }
+

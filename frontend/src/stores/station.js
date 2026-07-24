@@ -7,6 +7,7 @@ export const useStationStore = defineStore('station', () => {
   const djToken = ref(null)
   const playlist = ref([])
   const repository = ref([])
+  const suggestions = ref([])
   const state = ref({
     isPlaying: false,
     startedAt: 0,
@@ -33,17 +34,22 @@ export const useStationStore = defineStore('station', () => {
     repository.value = repo || []
   }
 
+  function setSuggestions(newSuggestions) {
+    suggestions.value = newSuggestions || []
+  }
+
   function reset() {
     stationId.value = null
     role.value = null
     djToken.value = null
     playlist.value = []
     repository.value = []
+    suggestions.value = []
     state.value = { isPlaying: false, startedAt: 0, seekOffset: 0, currentSong: '', duration: 0 }
   }
 
   return {
-    stationId, role, djToken, playlist, repository, state,
-    setStation, setState, setPlaylist, setRepository, reset,
+    stationId, role, djToken, playlist, repository, suggestions, state,
+    setStation, setState, setPlaylist, setRepository, setSuggestions, reset,
   }
 })

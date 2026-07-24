@@ -13,11 +13,12 @@ import (
 )
 
 type savedStation struct {
-	ID         string              `json:"id"`
-	DJ         string              `json:"dj"`
-	State      *model.PlaybackState `json:"state"`
-	Repository []model.Track       `json:"repository"`
-	Playlist   []model.Track       `json:"playlist"`
+	ID          string                 `json:"id"`
+	DJ          string                 `json:"dj"`
+	State       *model.PlaybackState   `json:"state"`
+	Repository  []model.Track          `json:"repository"`
+	Playlist    []model.Track          `json:"playlist"`
+	Suggestions []model.SongSuggestion `json:"suggestions"`
 }
 
 var (
@@ -46,11 +47,12 @@ func SaveStations() {
 	for _, s := range stations {
 		s.RLock()
 		all = append(all, savedStation{
-			ID:         s.ID,
-			DJ:         s.DJ,
-			State:      s.State,
-			Repository: s.Repository,
-			Playlist:   s.Playlist,
+			ID:          s.ID,
+			DJ:          s.DJ,
+			State:       s.State,
+			Repository:  s.Repository,
+			Playlist:    s.Playlist,
+			Suggestions: s.Suggestions,
 		})
 		s.RUnlock()
 	}
@@ -107,6 +109,11 @@ func LoadStations() {
 		station.State = ss.State
 		station.Repository = ss.Repository
 		station.Playlist = ss.Playlist
+		if ss.Suggestions != nil {
+			station.Suggestions = ss.Suggestions
+		} else {
+			station.Suggestions = make([]model.SongSuggestion, 0)
+		}
 
 		currentStation := station
 		currentStation.Hub.OnMessage = func(client *ws.Client, msg []byte) {

@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/media"
 	"radio-backend/internal/model"
 
@@ -132,3 +133,73 @@ func ListMusicFiles(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(files)
 }
+
+type UpdateTrackRequest struct {
+	Title    string `json:"title"`
+	Category string `json:"category"`
+	Theme    string `json:"theme"`
+}
+
+func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
+	stationID := chi.URLParam(r, "stationId")
+	trackID := chi.URLParam(r, "trackId")
+
+	authHeader := r.Header.Get("Authorization")
+	token := strings.TrimPrefix(authHeader, "Bearer ")
+	if token == "" || token == authHeader || !auth.ValidateDJToken(token, stationID) {
+		http.Error(w, "não autorizado", http.StatusUnauthorized)
+		return
+	}
+
+	stationsMu.RLock()
+	station, ok := stations[stationID]
+	stationsMu.RUnlock()
+	if !ok {
+		http.Error(w, "estação não encontrada", http.StatusNotFound)
+		return
+	}
+
+	var req UpdateTrackRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "payload inválido", http.StatusBadRequest)
+		return
+	}
+
+	station.Lock()
+	defer station.Unlock()
+
+	found := false
+	var updatedTrack model.Track
+
+	for i, t := range station.Repository {
+		if t.ID == trackID {
+			if strings.TrimSpace(req.Title) != "" {
+				station.Repository[i].Title = strings.TrimSpace(req.Title)
+			}
+			station.Repository[i].Category = strings.TrimSpace(req.Category)
+			station.Repository[i].Theme = strings.TrimSpace(req.Theme)
+			updatedTrack = station.Repository[i]
+			found = true
+			break
+		}
+	}
+
+	if !found {
+		http.Error(w, "música não encontrada no repositório", http.StatusNotFound)
+		return
+	}
+
+	for i, t := range station.Playlist {
+		if t.ID == trackID {
+			station.Playlist[i].Title = updatedTrack.Title
+			station.Playlist[i].Category = updatedTrack.Category
+			station.Playlist[i].Theme = updatedTrack.Theme
+		}
+	}
+
+	go SaveStations()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(updatedTrack)
+}
+

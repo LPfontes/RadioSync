@@ -22,17 +22,26 @@ export async function getStation(stationId) {
   return data
 }
 
-export async function uploadMusic(stationId, file, token) {
+export async function uploadMusic(stationId, file, token, category = '', theme = '') {
   const form = new FormData()
   form.append('file', file)
+  if (category) form.append('category', category)
+  if (theme) form.append('theme', theme)
   const { data } = await api.post(`/api/v1/stations/${stationId}/upload`, form, {
     headers: { 'Authorization': `Bearer ${token}` },
   })
   return data
 }
 
-export async function downloadFromYouTube(stationId, youtubeUrl, token) {
-  const { data } = await api.post(`/api/v1/stations/${stationId}/youtube`, { url: youtubeUrl }, {
+export async function downloadFromYouTube(stationId, youtubeUrl, token, category = '', theme = '') {
+  const { data } = await api.post(`/api/v1/stations/${stationId}/youtube`, { url: youtubeUrl, category, theme }, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  return data
+}
+
+export async function updateTrackMetadata(stationId, trackId, { title, category, theme }, token) {
+  const { data } = await api.put(`/api/v1/stations/${stationId}/tracks/${trackId}`, { title, category, theme }, {
     headers: { 'Authorization': `Bearer ${token}` },
   })
   return data

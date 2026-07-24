@@ -75,12 +75,17 @@ func UploadMusic(w http.ResponseWriter, r *http.Request) {
 		duration = 0
 	}
 
+	category := strings.TrimSpace(r.FormValue("category"))
+	theme := strings.TrimSpace(r.FormValue("theme"))
+
 	track := model.Track{
 		ID:       trackID,
 		Title:    header.Filename[:len(header.Filename)-len(ext)],
 		Filename: trackID + ".opus",
 		URL:      fmt.Sprintf("/musicas/%s.opus", trackID),
 		Duration: duration,
+		Category: category,
+		Theme:    theme,
 	}
 
 	station.Lock()

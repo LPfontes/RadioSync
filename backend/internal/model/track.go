@@ -6,4 +6,7 @@ type Track struct {
 	Filename string  `json:"filename"`
 	URL      string  `json:"url"`
 	Duration float64 `json:"duration"`
+	Category string  `json:"category,omitempty"`
+	Theme    string  `json:"theme,omitempty"`
 }
+

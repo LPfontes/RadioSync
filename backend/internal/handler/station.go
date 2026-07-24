@@ -88,14 +88,16 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 	playlist := station.Playlist
 	state := station.State
 	repo := station.Repository
+	suggestions := station.Suggestions
 	station.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
-		"id":         station.ID,
-		"playlist":   playlist,
-		"state":      state,
-		"repository": repo,
+		"id":          station.ID,
+		"playlist":    playlist,
+		"state":       state,
+		"repository":  repo,
+		"suggestions": suggestions,
 	})
 }
 
