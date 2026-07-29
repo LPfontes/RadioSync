@@ -28,6 +28,11 @@ var (
 	tracksCatalogMu sync.RWMutex
 )
 
+func init() {
+	model.TrackRegisterer = RegisterOrUpdateTrackMetadata
+	model.SaveStationsFunc = SaveStations
+}
+
 func dataDir() string {
 	dir := os.Getenv("DATA_DIR")
 	if dir == "" {

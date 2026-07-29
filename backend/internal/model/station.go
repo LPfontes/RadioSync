@@ -4,13 +4,23 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"os"
+	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 
+	"radio-backend/internal/media"
 	"radio-backend/internal/ws"
+
+	"github.com/google/uuid"
 )
 
-var TrackResolver func(trackID string) (Track, bool)
+var (
+	TrackResolver    func(trackID string) (Track, bool)
+	TrackRegisterer  func(t Track)
+	SaveStationsFunc func()
+)
 
 type PlaybackState struct {
 	IsPlaying   bool    `json:"isPlaying"`
@@ -319,6 +329,7 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 		if idx >= 0 {
 			sug := s.Suggestions[idx]
 			s.Suggestions = append(s.Suggestions[:idx], s.Suggestions[idx+1:]...)
+			s.broadcastSuggestions()
 
 			var targetTrack Track
 			found := false
@@ -339,29 +350,55 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 				}
 			}
 
-			if !found {
-				targetTrack = Track{
-					ID:       sug.ID,
-					Title:    sug.Title,
-					URL:      sug.URL,
-					Filename: "",
-					Duration: 0,
+			if !found && sug.Title != "" {
+				for _, t := range s.Repository {
+					if strings.EqualFold(t.Title, sug.Title) || t.ID == sug.Title {
+						targetTrack = t
+						found = true
+						break
+					}
 				}
 			}
 
-			s.Playlist = append(s.Playlist, targetTrack)
-			if len(s.Playlist) == 1 {
-				s.State.CurrentSong = targetTrack.URL
-				s.State.Duration = targetTrack.Duration
-				s.State.SeekOffset = 0
-				s.State.StartedAt = time.Now().UnixMilli()
-				s.State.IsPlaying = true
+			if found {
+				s.Playlist = append(s.Playlist, targetTrack)
+				if len(s.Playlist) == 1 {
+					s.State.CurrentSong = targetTrack.URL
+					s.State.Duration = targetTrack.Duration
+					s.State.SeekOffset = 0
+					s.State.StartedAt = time.Now().UnixMilli()
+					s.State.IsPlaying = true
+				}
+				s.broadcastPlaylist()
+				if len(s.Playlist) == 1 {
+					s.broadcastState()
+				}
+			} else {
+				ytURL := ExtractYouTubeURL(sug)
+				if ytURL != "" {
+					go s.processYouTubeSuggestion(sug, ytURL)
+				} else {
+					targetTrack = Track{
+						ID:       sug.ID,
+						Title:    sug.Title,
+						URL:      sug.URL,
+						Filename: "",
+						Duration: 0,
+					}
+					s.Playlist = append(s.Playlist, targetTrack)
+					if len(s.Playlist) == 1 {
+						s.State.CurrentSong = targetTrack.URL
+						s.State.Duration = targetTrack.Duration
+						s.State.SeekOffset = 0
+						s.State.StartedAt = time.Now().UnixMilli()
+						s.State.IsPlaying = true
+					}
+					s.broadcastPlaylist()
+					if len(s.Playlist) == 1 {
+						s.broadcastState()
+					}
+				}
 			}
-			s.broadcastPlaylist()
-			if len(s.Playlist) == 1 {
-				s.broadcastState()
-			}
-			s.broadcastSuggestions()
 		}
 
 	case "REJECT_SUGGESTION":
@@ -382,6 +419,90 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	case "CLEAR_SUGGESTIONS":
 		s.Suggestions = make([]SongSuggestion, 0)
 		s.broadcastSuggestions()
+	}
+}
+
+func ExtractYouTubeURL(sug SongSuggestion) string {
+	raw := strings.TrimSpace(sug.URL)
+	if raw == "" {
+		raw = strings.TrimSpace(sug.Title)
+	}
+	if raw == "" {
+		return ""
+	}
+
+	isYT := func(s string) bool {
+		sLower := strings.ToLower(s)
+		return strings.Contains(sLower, "youtube.com") || strings.Contains(sLower, "youtu.be")
+	}
+
+	if isYT(raw) {
+		if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
+			return "https://" + raw
+		}
+		return raw
+	}
+
+	words := strings.Fields(raw)
+	for _, w := range words {
+		if isYT(w) {
+			if !strings.HasPrefix(w, "http://") && !strings.HasPrefix(w, "https://") {
+				return "https://" + w
+			}
+			return w
+		}
+	}
+
+	return ""
+}
+
+func (s *Station) processYouTubeSuggestion(sug SongSuggestion, ytURL string) {
+	trackID := uuid.New().String()
+	musicDir := media.GetMusicDir()
+	_ = os.MkdirAll(musicDir, 0755)
+	opusPath := filepath.Join(musicDir, trackID+".opus")
+
+	log.Printf("Baixando sugestão do YouTube para estação %s: %s (URL: %s)", s.ID, sug.Title, ytURL)
+	title, duration, err := media.DownloadYouTubeAudio(ytURL, opusPath)
+	if err != nil {
+		log.Printf("Erro ao baixar sugestão do YouTube (%s): %v", ytURL, err)
+		return
+	}
+
+	if title == "" || title == "Vídeo do YouTube" {
+		if sug.Title != "" && !strings.Contains(strings.ToLower(sug.Title), "youtube.com") && !strings.Contains(strings.ToLower(sug.Title), "youtu.be") {
+			title = sug.Title
+		}
+	}
+
+	track := Track{
+		ID:       trackID,
+		Title:    title,
+		Filename: trackID + ".opus",
+		URL:      fmt.Sprintf("/musicas/%s.opus", trackID),
+		Duration: duration,
+	}
+
+	s.Lock()
+	s.Repository = append(s.Repository, track)
+	s.Playlist = append(s.Playlist, track)
+
+	if len(s.Playlist) == 1 {
+		s.State.CurrentSong = track.URL
+		s.State.Duration = track.Duration
+		s.State.SeekOffset = 0
+		s.State.StartedAt = time.Now().UnixMilli()
+		s.State.IsPlaying = true
+		s.broadcastState()
+	}
+	s.broadcastPlaylist()
+	s.Unlock()
+
+	if TrackRegisterer != nil {
+		TrackRegisterer(track)
+	}
+	if SaveStationsFunc != nil {
+		go SaveStationsFunc()
 	}
 }
 

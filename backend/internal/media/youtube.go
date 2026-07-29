@@ -10,6 +10,18 @@ import (
 	"strings"
 )
 
+func GetMusicDir() string {
+	dir := os.Getenv("MUSIC_DIR")
+	if dir == "" {
+		dir = "../musicas"
+	}
+	abs, err := filepath.Abs(dir)
+	if err != nil {
+		return dir
+	}
+	return abs
+}
+
 func getCookiesFile() string {
 	dir := os.Getenv("DATA_DIR")
 	if dir == "" {
