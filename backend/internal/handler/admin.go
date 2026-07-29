@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/model"
 
 	"github.com/go-chi/chi/v5"
@@ -39,7 +40,18 @@ func GetAdminStations(w http.ResponseWriter, r *http.Request) {
 		repo := append([]model.Track{}, s.Repository...)
 		playlist := append([]model.Track{}, s.Playlist...)
 		state := s.State
+		djToken := s.DJ
 		s.RUnlock()
+
+		if !auth.ValidateDJToken(djToken, id) {
+			if validToken, err := auth.GenerateDJToken(id); err == nil {
+				djToken = validToken
+				s.Lock()
+				s.DJ = validToken
+				s.Unlock()
+				go SaveStations()
+			}
+		}
 
 		missingCount := 0
 		for _, t := range repo {
@@ -55,7 +67,7 @@ func GetAdminStations(w http.ResponseWriter, r *http.Request) {
 
 		summary := AdminStationSummary{
 			ID:                id,
-			DJToken:           s.DJ,
+			DJToken:           djToken,
 			State:             state,
 			Repository:        repo,
 			Playlist:          playlist,

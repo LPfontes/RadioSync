@@ -35,6 +35,18 @@ func GetAllLibraryTracks() []model.Track {
 	trackMap := make(map[string]model.Track)
 	dir := getMusicDir()
 
+	// 1. Carregar do catálogo central de metadados
+	catalog := GetAllCatalogTracks()
+	for _, t := range catalog {
+		if t.ID != "" {
+			filePath := filepath.Join(dir, t.Filename)
+			if _, err := os.Stat(filePath); err == nil {
+				trackMap[t.ID] = t
+			}
+		}
+	}
+
+	// 2. Verificar repositórios de estações ativas para metadados legados/não catalogados
 	stationsMu.RLock()
 	for _, s := range stations {
 		s.RLock()
@@ -43,6 +55,7 @@ func GetAllLibraryTracks() []model.Track {
 			if _, err := os.Stat(filePath); err == nil {
 				if _, exists := trackMap[t.ID]; !exists {
 					trackMap[t.ID] = t
+					RegisterOrUpdateTrackMetadata(t)
 				}
 			}
 		}
@@ -50,6 +63,7 @@ func GetAllLibraryTracks() []model.Track {
 	}
 	stationsMu.RUnlock()
 
+	// 3. Varrer o diretório por arquivos de áudio .opus fisicamente presentes
 	entries, err := os.ReadDir(dir)
 	if err == nil {
 		for _, e := range entries {
@@ -65,15 +79,20 @@ func GetAllLibraryTracks() []model.Track {
 					}
 				}
 				if !found {
-					duration, _ := media.GetDuration(filepath.Join(dir, filename))
-					t := model.Track{
-						ID:       trackID,
-						Title:    "Música " + trackID,
-						Filename: filename,
-						URL:      fmt.Sprintf("/musicas/%s", filename),
-						Duration: duration,
+					if catTrack, ok := GetTrackMetadata(trackID); ok {
+						trackMap[catTrack.ID] = catTrack
+					} else {
+						duration, _ := media.GetDuration(filepath.Join(dir, filename))
+						t := model.Track{
+							ID:       trackID,
+							Title:    "Música " + trackID,
+							Filename: filename,
+							URL:      fmt.Sprintf("/musicas/%s", filename),
+							Duration: duration,
+						}
+						trackMap[t.ID] = t
+						RegisterOrUpdateTrackMetadata(t)
 					}
-					trackMap[t.ID] = t
 				}
 			}
 		}
@@ -87,6 +106,13 @@ func GetAllLibraryTracks() []model.Track {
 }
 
 func FindGlobalTrack(trackID string) (model.Track, bool) {
+	if t, ok := GetTrackMetadata(trackID); ok {
+		dir := getMusicDir()
+		if _, err := os.Stat(filepath.Join(dir, t.Filename)); err == nil {
+			return t, true
+		}
+	}
+
 	tracks := GetAllLibraryTracks()
 	for _, t := range tracks {
 		if t.ID == trackID || t.Filename == trackID || t.Filename == trackID+".opus" {
@@ -166,8 +192,6 @@ func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	station.Lock()
-	defer station.Unlock()
-
 	found := false
 	var updatedTrack model.Track
 
@@ -185,6 +209,7 @@ func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if !found {
+		station.Unlock()
 		http.Error(w, "música não encontrada no repositório", http.StatusNotFound)
 		return
 	}
@@ -196,7 +221,9 @@ func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
 			station.Playlist[i].Theme = updatedTrack.Theme
 		}
 	}
+	station.Unlock()
 
+	RegisterOrUpdateTrackMetadata(updatedTrack)
 	go SaveStations()
 
 	w.Header().Set("Content-Type", "application/json")

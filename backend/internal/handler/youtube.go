@@ -72,6 +72,7 @@ func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
 	station.Repository = append(station.Repository, track)
 	station.Unlock()
 
+	RegisterOrUpdateTrackMetadata(track)
 	go SaveStations()
 
 	w.Header().Set("Content-Type", "application/json")

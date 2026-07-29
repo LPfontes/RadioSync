@@ -8,6 +8,7 @@ import (
 	"sync"
 	"time"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/model"
 	"radio-backend/internal/ws"
 )
@@ -22,7 +23,9 @@ type savedStation struct {
 }
 
 var (
-	persistMu sync.Mutex
+	persistMu       sync.Mutex
+	tracksCatalog   = make(map[string]model.Track)
+	tracksCatalogMu sync.RWMutex
 )
 
 func dataDir() string {
@@ -39,6 +42,70 @@ func dataDir() string {
 
 func persistPath() string {
 	return filepath.Join(dataDir(), "stations.json")
+}
+
+func tracksPersistPath() string {
+	return filepath.Join(dataDir(), "tracks.json")
+}
+
+func RegisterOrUpdateTrackMetadata(t model.Track) {
+	if t.ID == "" {
+		return
+	}
+	tracksCatalogMu.Lock()
+	tracksCatalog[t.ID] = t
+	tracksCatalogMu.Unlock()
+	go SaveTracksCatalog()
+}
+
+func GetTrackMetadata(trackID string) (model.Track, bool) {
+	tracksCatalogMu.RLock()
+	defer tracksCatalogMu.RUnlock()
+	t, ok := tracksCatalog[trackID]
+	return t, ok
+}
+
+func GetAllCatalogTracks() []model.Track {
+	tracksCatalogMu.RLock()
+	defer tracksCatalogMu.RUnlock()
+	list := make([]model.Track, 0, len(tracksCatalog))
+	for _, t := range tracksCatalog {
+		list = append(list, t)
+	}
+	return list
+}
+
+func SaveTracksCatalog() {
+	tracksCatalogMu.RLock()
+	all := make([]model.Track, 0, len(tracksCatalog))
+	for _, t := range tracksCatalog {
+		all = append(all, t)
+	}
+	tracksCatalogMu.RUnlock()
+
+	persistMu.Lock()
+	defer persistMu.Unlock()
+
+	dir := dataDir()
+	os.MkdirAll(dir, 0755)
+
+	data, err := json.MarshalIndent(all, "", "  ")
+	if err != nil {
+		log.Printf("erro ao serializar catálogo de músicas: %v", err)
+		return
+	}
+
+	tmpPath := filepath.Join(dir, "tracks.json.tmp")
+	finalPath := tracksPersistPath()
+
+	if err := os.WriteFile(tmpPath, data, 0644); err != nil {
+		log.Printf("erro ao salvar catálogo de músicas: %v", err)
+		return
+	}
+
+	if err := os.Rename(tmpPath, finalPath); err != nil {
+		log.Printf("erro ao renomear arquivo de catálogo de músicas: %v", err)
+	}
 }
 
 func SaveStations() {
@@ -83,6 +150,51 @@ func SaveStations() {
 	}
 }
 
+func LoadTracksCatalog() {
+	persistMu.Lock()
+	defer persistMu.Unlock()
+
+	data, err := os.ReadFile(tracksPersistPath())
+	if err == nil {
+		var saved []model.Track
+		if err := json.Unmarshal(data, &saved); err == nil {
+			tracksCatalogMu.Lock()
+			for _, t := range saved {
+				if t.ID != "" {
+					tracksCatalog[t.ID] = t
+				}
+			}
+			tracksCatalogMu.Unlock()
+			log.Printf("%d metadados de músicas restaurados de tracks.json", len(saved))
+			return
+		}
+	}
+
+	// Se tracks.json não existir, migra dos repositórios de estações salvos
+	stationsMu.RLock()
+	tracksCatalogMu.Lock()
+	migrated := 0
+	for _, s := range stations {
+		s.RLock()
+		for _, t := range s.Repository {
+			if t.ID != "" {
+				if _, exists := tracksCatalog[t.ID]; !exists {
+					tracksCatalog[t.ID] = t
+					migrated++
+				}
+			}
+		}
+		s.RUnlock()
+	}
+	tracksCatalogMu.Unlock()
+	stationsMu.RUnlock()
+
+	if migrated > 0 {
+		log.Printf("%d metadados de músicas migrados das estações ativas", migrated)
+		go SaveTracksCatalog()
+	}
+}
+
 func LoadStations() {
 	persistMu.Lock()
 	defer persistMu.Unlock()
@@ -104,8 +216,16 @@ func LoadStations() {
 	stationsMu.Lock()
 	defer stationsMu.Unlock()
 
+	tracksCatalogMu.Lock()
 	for _, ss := range saved {
-		station := model.NewStation(ss.ID, ss.DJ)
+		djToken := ss.DJ
+		if !auth.ValidateDJToken(djToken, ss.ID) {
+			if newToken, err := auth.GenerateDJToken(ss.ID); err == nil {
+				djToken = newToken
+			}
+		}
+
+		station := model.NewStation(ss.ID, djToken)
 		station.State = ss.State
 		station.Repository = ss.Repository
 		station.Playlist = ss.Playlist
@@ -113,6 +233,14 @@ func LoadStations() {
 			station.Suggestions = ss.Suggestions
 		} else {
 			station.Suggestions = make([]model.SongSuggestion, 0)
+		}
+
+		for _, t := range ss.Repository {
+			if t.ID != "" {
+				if _, exists := tracksCatalog[t.ID]; !exists {
+					tracksCatalog[t.ID] = t
+				}
+			}
 		}
 
 		currentStation := station
@@ -123,6 +251,7 @@ func LoadStations() {
 
 		stations[ss.ID] = currentStation
 	}
+	tracksCatalogMu.Unlock()
 
 	log.Printf("%d estações restauradas do arquivo", len(saved))
 }
@@ -131,5 +260,7 @@ func PeriodicSave() {
 	for {
 		time.Sleep(30 * time.Second)
 		SaveStations()
+		SaveTracksCatalog()
 	}
 }
+

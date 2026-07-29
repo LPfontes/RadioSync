@@ -43,15 +43,13 @@ func CreateStation(w http.ResponseWriter, r *http.Request) {
 		}
 		id = generateCode(6)
 	}
-	djID := generateCode(12)
-
-	station := model.NewStation(id, djID)
-
 	token, err := auth.GenerateDJToken(id)
 	if err != nil {
 		http.Error(w, "erro ao gerar token", http.StatusInternalServerError)
 		return
 	}
+
+	station := model.NewStation(id, token)
 
 	stationsMu.Lock()
 	stations[id] = station

@@ -462,7 +462,7 @@ const editTheme = ref('')
 const savingEdit = ref(false)
 
 const categoriesList = ['Rock', 'Pop', 'Sertanejo', 'MPB', 'Eletrônica', 'Gospel', 'Funk', 'Hip-Hop', 'Reggae', 'Efeitos / Trilhas', 'Outros']
-const themesList = ['Abertura', 'Vinheta', 'Fundo Musical', 'Comercial', 'Encerramento', 'Entrevista', 'Geral']
+const themesList = ['Terror', 'Combate', 'Investigação', 'Calma', 'Tensão', 'Dramatica']
 
 const filteredRepoTracks = computed(() => {
   return (store.repository || []).filter(t => {

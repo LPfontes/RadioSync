@@ -44,6 +44,7 @@ func main() {
 	log.Printf("Diretório de músicas: %s", musicDir)
 
 	handler.LoadStations()
+	handler.LoadTracksCatalog()
 	go handler.PeriodicSave()
 
 	fileServer := http.FileServer(http.Dir(musicDir))
