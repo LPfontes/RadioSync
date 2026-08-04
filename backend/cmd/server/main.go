@@ -43,8 +43,8 @@ func main() {
 	os.MkdirAll(musicDir, 0755)
 	log.Printf("Diretório de músicas: %s", musicDir)
 
-	handler.LoadStations()
 	handler.LoadTracksCatalog()
+	handler.LoadStations()
 	go handler.PeriodicSave()
 
 	fileServer := http.FileServer(http.Dir(musicDir))

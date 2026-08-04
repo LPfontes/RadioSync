@@ -251,6 +251,8 @@ func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
 
 	newTitle := strings.TrimSpace(req.Title)
 	updatedCount := 0
+	var lastUpdatedTrack model.Track
+	foundTrack := false
 
 	stationsMu.Lock()
 	for _, s := range stations {
@@ -258,6 +260,8 @@ func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
 		for i := range s.Repository {
 			if s.Repository[i].ID == trackID || s.Repository[i].Filename == trackID || s.Repository[i].Filename == trackID+".opus" {
 				s.Repository[i].Title = newTitle
+				lastUpdatedTrack = s.Repository[i]
+				foundTrack = true
 				updatedCount++
 			}
 		}
@@ -270,7 +274,32 @@ func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
 	}
 	stationsMu.Unlock()
 
+	if !foundTrack {
+		if t, ok := GetTrackMetadata(trackID); ok {
+			t.Title = newTitle
+			lastUpdatedTrack = t
+			foundTrack = true
+		} else {
+			filename := trackID
+			if !strings.HasSuffix(filename, ".opus") {
+				filename = trackID + ".opus"
+			}
+			lastUpdatedTrack = model.Track{
+				ID:       strings.TrimSuffix(trackID, ".opus"),
+				Title:    newTitle,
+				Filename: filename,
+				URL:      "/musicas/" + filename,
+			}
+			foundTrack = true
+		}
+	}
+
+	if foundTrack {
+		RegisterOrUpdateTrackMetadata(lastUpdatedTrack)
+	}
+
 	go SaveStations()
+	go SaveTracksCatalog()
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -281,4 +310,5 @@ func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
 		"updated": updatedCount,
 	})
 }
+
 
