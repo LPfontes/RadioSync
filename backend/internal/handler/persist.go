@@ -55,7 +55,7 @@ func tracksPersistPath() string {
 }
 
 func trackNamesPersistPath() string {
-	return filepath.Join(dataDir(), "track_names.json")
+	return filepath.Join(getMusicDir(), "track_names.json")
 }
 
 func RegisterOrUpdateTrackMetadata(t model.Track) {
@@ -140,12 +140,14 @@ func SaveTracksCatalog() {
 		}
 	}
 
-	// 2. Salva track_names.json no formato JSON chave-valor (chave: codigo da musica -> valor: nome da musica)
+	// 2. Salva track_names.json na pasta de músicas (MUSIC_DIR) em formato JSON chave-valor (chave: codigo da musica -> valor: nome da musica)
+	musicDir := getMusicDir()
+	os.MkdirAll(musicDir, 0755)
 	namesData, err := json.MarshalIndent(namesMap, "", "  ")
 	if err != nil {
 		log.Printf("erro ao serializar mapa de nomes de músicas: %v", err)
 	} else {
-		tmpPath := filepath.Join(dir, "track_names.json.tmp")
+		tmpPath := filepath.Join(musicDir, "track_names.json.tmp")
 		finalPath := trackNamesPersistPath()
 		if err := os.WriteFile(tmpPath, namesData, 0644); err == nil {
 			_ = os.Rename(tmpPath, finalPath)
@@ -199,9 +201,14 @@ func LoadTracksCatalog() {
 	persistMu.Lock()
 	defer persistMu.Unlock()
 
-	// 1. Carrega de track_names.json (JSON chave-valor: código -> nome)
+	// 1. Carrega de track_names.json em MUSIC_DIR (ou fallback em DATA_DIR se não existir)
 	namesPath := trackNamesPersistPath()
-	if data, err := os.ReadFile(namesPath); err == nil {
+	data, err := os.ReadFile(namesPath)
+	if err != nil {
+		fallbackPath := filepath.Join(dataDir(), "track_names.json")
+		data, err = os.ReadFile(fallbackPath)
+	}
+	if err == nil {
 		var names map[string]string
 		if err := json.Unmarshal(data, &names); err == nil && len(names) > 0 {
 			tracksCatalogMu.Lock()
