@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -53,6 +54,7 @@ type downloadStrategy struct {
 
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
 	cookiesPath := getCookiesFile()
+	log.Printf("[youtube] cookiesPath detectado: '%s' (DATA_DIR='%s')", cookiesPath, os.Getenv("DATA_DIR"))
 
 	// 1. Obter título do vídeo limpo
 	titleArgs := []string{
@@ -72,6 +74,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	if title == "" {
 		title = "Vídeo do YouTube"
 	}
+	log.Printf("[youtube] Título obtido: '%s'", title)
 
 	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
 
@@ -81,7 +84,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	}
 	potArg := fmt.Sprintf(";youtubepot-bgutilhttp:base_url=%s", potURL)
 
-	// 2. Definir estratégias em ordem de resiliência no Railway / IPs de DataCenter
+	// 2. Definir estratégias em ordem de resiliência
 	strategies := []downloadStrategy{}
 
 	if cookiesPath != "" {
@@ -101,7 +104,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	)
 
 	var lastErr error
-	for _, st := range strategies {
+	for i, st := range strategies {
 		args := []string{
 			"-f", "ba/b",
 			"-x",
@@ -119,15 +122,17 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		}
 		args = append(args, youtubeURL)
 
+		log.Printf("[youtube] Tentando estratégia %d/%d (cookies=%v, clients='%s')", i+1, len(strategies), st.cookies != "", st.clients)
 		cmd := exec.Command("yt-dlp", args...)
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err == nil {
-			// Download realizado com sucesso!
+			log.Printf("[youtube] Estratégia %d teve SUCESSO!", i+1)
 			duration, _ := GetDuration(outputPath)
 			return title, duration, nil
 		} else {
+			log.Printf("[youtube] Estratégia %d FALHOU: %v | stderr: %s", i+1, err, strings.TrimSpace(stderr.String()))
 			lastErr = fmt.Errorf("%v | log: %s", err, strings.TrimSpace(stderr.String()))
 		}
 	}
