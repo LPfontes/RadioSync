@@ -1,4 +1,10 @@
 services:
+  bgutil-provider:
+    image: brainicism/bgutil-ytdlp-pot-provider:latest
+    container_name: bgutil-provider
+    restart: unless-stopped
+    init: true
+
   radiosync:
     build: .
     container_name: radiosync
@@ -11,6 +17,10 @@ services:
       - FRONTEND_DIR=/app/frontend/dist
       - DATA_DIR=/app/data
       - JWT_SECRET=${JWT_SECRET}
+      - POT_PROVIDER_URL=http://bgutil-provider:4416
     volumes:
       - ./musicas:/app/musicas
       - ./data:/app/data
+    depends_on:
+      - bgutil-provider
+

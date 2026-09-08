@@ -76,18 +76,26 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 
 	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
 
+	potURL := os.Getenv("POT_PROVIDER_URL")
+	if potURL == "" {
+		potURL = "http://bgutil-provider:4416"
+	}
+	potArg := fmt.Sprintf(";youtubepot-bgutilhttp:base_url=%s", potURL)
+
 	// 2. Definir estratégias em ordem de resiliência no Railway / IPs de DataCenter
 	strategies := []downloadStrategy{}
 
 	if cookiesPath != "" {
 		strategies = append(strategies,
-			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web"},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=mweb,web" + potArg},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web" + potArg},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
 			downloadStrategy{cookies: cookiesPath, clients: ""},
 		)
 	}
 
 	strategies = append(strategies,
+		downloadStrategy{cookies: "", clients: "youtube:player_client=mweb,web" + potArg},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=web_embedded,android,ios"},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=tv,mweb"},
 		downloadStrategy{cookies: "", clients: ""},
@@ -100,7 +108,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 			"-x",
 			"--audio-format", "opus",
 			"--audio-quality", "0",
-			"--js-runtimes", "node",
+			"--js-runtimes", "quickjs",
 			"-o", outputTemplate,
 			"--no-playlist",
 			"--no-warnings",
