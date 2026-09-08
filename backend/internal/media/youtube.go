@@ -54,6 +54,9 @@ type downloadStrategy struct {
 
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
 	cookiesPath := getCookiesFile()
+	denoPath, denoErr := exec.LookPath("deno")
+	log.Printf("[youtube] PATH='%s'", os.Getenv("PATH"))
+	log.Printf("[youtube] denoPath='%s' (err=%v)", denoPath, denoErr)
 	log.Printf("[youtube] cookiesPath detectado: '%s' (DATA_DIR='%s')", cookiesPath, os.Getenv("DATA_DIR"))
 
 	// 1. Obter título do vídeo limpo
@@ -106,6 +109,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	var lastErr error
 	for i, st := range strategies {
 		args := []string{
+			"-v",
 			"-f", "ba/b",
 			"-x",
 			"--audio-format", "opus",
