@@ -52,6 +52,19 @@ type downloadStrategy struct {
 	clients string
 }
 
+func cleanEnv() []string {
+	env := make([]string, 0, len(os.Environ()))
+	for _, e := range os.Environ() {
+		// Deno crashes with "Failed to open IPC channel from NODE_CHANNEL_FD (3): fd is not from BiPipe"
+		// when spawned as a descendant of PM2/Node if NODE_CHANNEL_FD is present.
+		if strings.HasPrefix(e, "NODE_CHANNEL_FD=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return env
+}
+
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
 	cookiesPath := getCookiesFile()
 	denoPath, denoErr := exec.LookPath("deno")
@@ -72,6 +85,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	titleArgs = append(titleArgs, youtubeURL)
 
 	titleCmd := exec.Command("yt-dlp", titleArgs...)
+	titleCmd.Env = cleanEnv()
 	titleOut, _ := titleCmd.Output()
 	title := strings.TrimSpace(string(titleOut))
 	if title == "" {
@@ -128,6 +142,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 
 		log.Printf("[youtube] Tentando estratégia %d/%d (cookies=%v, clients='%s')", i+1, len(strategies), st.cookies != "", st.clients)
 		cmd := exec.Command("yt-dlp", args...)
+		cmd.Env = cleanEnv()
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
