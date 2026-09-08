@@ -87,10 +87,10 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 
 	if cookiesPath != "" {
 		strategies = append(strategies,
+			downloadStrategy{cookies: cookiesPath, clients: ""},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=mweb,web" + potArg},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web" + potArg},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
-			downloadStrategy{cookies: cookiesPath, clients: ""},
 		)
 	}
 
@@ -108,7 +108,6 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 			"-x",
 			"--audio-format", "opus",
 			"--audio-quality", "0",
-			"--js-runtimes", "quickjs",
 			"-o", outputTemplate,
 			"--no-playlist",
 			"--no-warnings",
