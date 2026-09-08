@@ -58,7 +58,6 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	titleArgs := []string{
 		"--quiet",
 		"--no-warnings",
-		"--js-runtimes", "node",
 		"--print", "%(title)s",
 		"--no-playlist",
 	}
@@ -133,5 +132,5 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		}
 	}
 
-	return "", 0, fmt.Errorf("falha no download do YouTube no Railway após testar estratégias: %v", lastErr)
+	return "", 0, fmt.Errorf("falha no download do YouTube após testar estratégias: %v", lastErr)
 }
