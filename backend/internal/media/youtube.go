@@ -58,6 +58,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	titleArgs := []string{
 		"--quiet",
 		"--no-warnings",
+		"--js-runtimes", "node",
 		"--print", "%(title)s",
 		"--no-playlist",
 	}
@@ -99,6 +100,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 			"-x",
 			"--audio-format", "opus",
 			"--audio-quality", "0",
+			"--js-runtimes", "node",
 			"-o", outputTemplate,
 			"--no-playlist",
 			"--no-warnings",
