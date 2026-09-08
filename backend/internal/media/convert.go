@@ -12,6 +12,7 @@ import (
 var supportedFormats = map[string]bool{
 	".mp3":  true,
 	".mp4":  true,
+	".webm": true,
 	".wav":  true,
 	".ogg":  true,
 	".flac": true,

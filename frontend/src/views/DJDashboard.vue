@@ -53,7 +53,7 @@
             <div>
               <h3 class="text-xs font-medium text-zinc-400 mb-2">Upload de Músicas</h3>
               <div class="space-y-3">
-                <input type="file" ref="fileInputRef" accept=".mp3,.mp4,.wav,.ogg,.flac,.aac,.m4a" @change="selectFile" class="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-zinc-700 file:text-zinc-200 hover:file:bg-zinc-600" />
+                <input type="file" ref="fileInputRef" accept=".mp3,.mp4,.webm,.wav,.ogg,.flac,.aac,.m4a" @change="selectFile" class="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-zinc-700 file:text-zinc-200 hover:file:bg-zinc-600" />
                 <div v-if="selectedFile" class="space-y-2 pt-1 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-700/60">
                   <span class="block truncate text-xs text-zinc-200 font-medium">{{ selectedFile.name }}</span>
                   <div class="grid grid-cols-2 gap-2">
