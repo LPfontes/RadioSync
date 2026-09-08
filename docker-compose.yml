@@ -10,7 +10,7 @@ services:
       - MUSIC_DIR=/app/musicas
       - FRONTEND_DIR=/app/frontend/dist
       - DATA_DIR=/app/data
-      - JWT_SECRET=change-me-to-a-secure-secret
+      - JWT_SECRET=${JWT_SECRET}
     volumes:
       - ./musicas:/app/musicas
       - ./data:/app/data
