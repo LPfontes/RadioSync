@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"encoding/base64"
 	"fmt"
+	"log"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -51,8 +52,25 @@ type downloadStrategy struct {
 	clients string
 }
 
+func cleanEnv() []string {
+	env := make([]string, 0, len(os.Environ()))
+	for _, e := range os.Environ() {
+		// Deno crashes with "Failed to open IPC channel from NODE_CHANNEL_FD (3): fd is not from BiPipe"
+		// when spawned as a descendant of PM2/Node if NODE_CHANNEL_FD is present.
+		if strings.HasPrefix(e, "NODE_CHANNEL_FD=") {
+			continue
+		}
+		env = append(env, e)
+	}
+	return env
+}
+
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
 	cookiesPath := getCookiesFile()
+	denoPath, denoErr := exec.LookPath("deno")
+	log.Printf("[youtube] PATH='%s'", os.Getenv("PATH"))
+	log.Printf("[youtube] denoPath='%s' (err=%v)", denoPath, denoErr)
+	log.Printf("[youtube] cookiesPath detectado: '%s' (DATA_DIR='%s')", cookiesPath, os.Getenv("DATA_DIR"))
 
 	// 1. Obter título do vídeo limpo
 	titleArgs := []string{
@@ -67,34 +85,45 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	titleArgs = append(titleArgs, youtubeURL)
 
 	titleCmd := exec.Command("yt-dlp", titleArgs...)
+	titleCmd.Env = cleanEnv()
 	titleOut, _ := titleCmd.Output()
 	title := strings.TrimSpace(string(titleOut))
 	if title == "" {
 		title = "Vídeo do YouTube"
 	}
+	log.Printf("[youtube] Título obtido: '%s'", title)
 
 	outputTemplate := strings.TrimSuffix(outputPath, filepath.Ext(outputPath)) + ".%(ext)s"
 
-	// 2. Definir estratégias em ordem de resiliência no Railway / IPs de DataCenter
+	potURL := os.Getenv("POT_PROVIDER_URL")
+	if potURL == "" {
+		potURL = "http://bgutil-provider:4416"
+	}
+	potArg := fmt.Sprintf(";youtubepot-bgutilhttp:base_url=%s", potURL)
+
+	// 2. Definir estratégias em ordem de resiliência
 	strategies := []downloadStrategy{}
 
 	if cookiesPath != "" {
 		strategies = append(strategies,
-			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web"},
-			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
 			downloadStrategy{cookies: cookiesPath, clients: ""},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=mweb,web" + potArg},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web" + potArg},
+			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
 		)
 	}
 
 	strategies = append(strategies,
+		downloadStrategy{cookies: "", clients: "youtube:player_client=mweb,web" + potArg},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=web_embedded,android,ios"},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=tv,mweb"},
 		downloadStrategy{cookies: "", clients: ""},
 	)
 
 	var lastErr error
-	for _, st := range strategies {
+	for i, st := range strategies {
 		args := []string{
+			"-v",
 			"-f", "ba/b",
 			"-x",
 			"--audio-format", "opus",
@@ -111,18 +140,21 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		}
 		args = append(args, youtubeURL)
 
+		log.Printf("[youtube] Tentando estratégia %d/%d (cookies=%v, clients='%s')", i+1, len(strategies), st.cookies != "", st.clients)
 		cmd := exec.Command("yt-dlp", args...)
+		cmd.Env = cleanEnv()
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err == nil {
-			// Download realizado com sucesso!
+			log.Printf("[youtube] Estratégia %d teve SUCESSO!", i+1)
 			duration, _ := GetDuration(outputPath)
 			return title, duration, nil
 		} else {
+			log.Printf("[youtube] Estratégia %d FALHOU: %v | stderr: %s", i+1, err, strings.TrimSpace(stderr.String()))
 			lastErr = fmt.Errorf("%v | log: %s", err, strings.TrimSpace(stderr.String()))
 		}
 	}
 
-	return "", 0, fmt.Errorf("falha no download do YouTube no Railway após testar estratégias: %v", lastErr)
+	return "", 0, fmt.Errorf("falha no download do YouTube após testar estratégias: %v", lastErr)
 }

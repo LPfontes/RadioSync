@@ -14,9 +14,10 @@ COPY backend/ .
 RUN CGO_ENABLED=0 go build -o server ./cmd/server/
 
 FROM alpine:3.20
-RUN apk add --no-cache ffmpeg ca-certificates python3 nodejs curl && \
+RUN apk add --no-cache ffmpeg ca-certificates python3 py3-pip nodejs curl quickjs && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
-    chmod a+rx /usr/local/bin/yt-dlp
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    pip install --break-system-packages -U bgutil-ytdlp-pot-provider
 WORKDIR /app
 COPY --from=backend /app/server .
 COPY --from=frontend /app/dist ./frontend/dist
