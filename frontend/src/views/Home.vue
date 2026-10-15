@@ -83,7 +83,7 @@ async function createRoom() {
     const data = await createStation()
     store.setStation(data.stationId, data.djToken, 'dj')
     saveStation(data.stationId, 'dj', data.djToken)
-    router.push(`/dj/${data.stationId}`)
+    router.push(`/radio/${data.stationId}`)
   } catch (e) {
     error.value = 'Erro ao criar estação'
   } finally {
@@ -107,8 +107,7 @@ async function joinRoom() {
 
 function enterSaved(s) {
   store.setStation(s.id, s.token, s.role)
-  const route = s.role === 'dj' ? `/dj/${s.id}` : `/radio/${s.id}`
-  router.push(route)
+  router.push(`/radio/${s.id}`)
 }
 
 function remove(id) {

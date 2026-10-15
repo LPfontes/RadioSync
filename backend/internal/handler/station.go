@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"math/big"
 	"net/http"
+	"strings"
 	"sync"
 
 	"radio-backend/internal/auth"
@@ -90,12 +91,28 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 	station.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
+	hasDJ := station.Hub != nil && station.Hub.HasDJConnected()
+	
+	// Se o cliente enviar o token do DJ (via Authorization Bearer ou query param token)
+	authHeader := r.Header.Get("Authorization")
+	reqToken := strings.TrimPrefix(authHeader, "Bearer ")
+	if reqToken == "" || reqToken == authHeader {
+		reqToken = r.URL.Query().Get("token")
+	}
+
+	role := "listener"
+	if reqToken != "" && auth.ValidateDJToken(reqToken, id) {
+		role = "dj"
+	}
+
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"id":          station.ID,
 		"playlist":    playlist,
 		"state":       state,
 		"repository":  repo,
 		"suggestions": suggestions,
+		"hasDJOnline": hasDJ,
+		"role":        role,
 	})
 }
 

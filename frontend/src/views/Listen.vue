@@ -1,13 +1,35 @@
 <template>
-  <div class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
+  <!-- Modo DJ: renderiza o painel completo de DJ -->
+  <DJDashboard v-if="store.role === 'dj'" />
+
+  <!-- Modo Ouvinte -->
+  <div v-else class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
     <header class="border-b border-zinc-800 px-4 py-3">
       <div class="max-w-2xl mx-auto flex items-center justify-between">
         <div class="flex items-center gap-2.5">
           <Disc class="w-5 h-5 text-emerald-500" />
           <span class="font-bold text-emerald-500">RadioSync</span>
           <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
+          <span v-if="store.hasDJOnline" class="flex items-center gap-1 text-[11px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 px-2 py-0.5 rounded-full font-medium">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+            DJ Ao Vivo
+          </span>
+          <span v-else class="flex items-center gap-1 text-[11px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-full font-medium">
+            Sem DJ no momento
+          </span>
         </div>
-        <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+        <div class="flex items-center gap-3">
+          <!-- Botão só aparece se NÃO houver ninguém com o cargo DJ conectado no momento -->
+          <button
+            v-if="!store.hasDJOnline"
+            @click="openDJLoginModal"
+            class="text-xs px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium transition-colors flex items-center gap-1 shadow-sm"
+          >
+            <Key class="w-3.5 h-3.5" />
+            Entrar como DJ
+          </button>
+          <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+        </div>
       </div>
     </header>
 
@@ -174,18 +196,64 @@
         </div>
       </div>
     </div>
+
+    <!-- Modal para Entrar como DJ -->
+    <div v-if="showDJModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
+      <div class="bg-zinc-800 border border-zinc-700 rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
+        <div class="flex items-center justify-between border-b border-zinc-700 pb-3">
+          <div class="flex items-center gap-2">
+            <Key class="w-4 h-4 text-amber-500" />
+            <h3 class="font-bold text-sm text-zinc-100">Assumir como DJ</h3>
+          </div>
+          <button @click="showDJModal = false" class="text-zinc-400 hover:text-zinc-200 text-xs">✕</button>
+        </div>
+
+        <p class="text-xs text-zinc-400">
+          Insira o token de validação de DJ gerado na criação da estação para assumir os controles da rádio.
+        </p>
+
+        <div class="space-y-1.5">
+          <label class="block text-xs font-medium text-zinc-300">Token de Validação do DJ</label>
+          <input
+            v-model="inputDJToken"
+            placeholder="Cole o token JWT do DJ aqui..."
+            type="password"
+            @keyup.enter="handleClaimDJ"
+            class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 outline-none focus:ring-1 focus:ring-amber-500"
+          />
+          <p v-if="djModalError" class="text-xs text-red-400 font-medium pt-1">{{ djModalError }}</p>
+        </div>
+
+        <div class="flex justify-end gap-2 pt-2 border-t border-zinc-700">
+          <button
+            @click="showDJModal = false"
+            class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium transition-colors"
+          >
+            Cancelar
+          </button>
+          <button
+            @click="handleClaimDJ"
+            :disabled="validatingDJ || !inputDJToken.trim()"
+            class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
+          >
+            {{ validatingDJ ? 'Validando...' : 'Confirmar e Entrar como DJ' }}
+          </button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Radio, Copy, Disc, Music, User, Library, Youtube, Search, Plus, Send, Clock } from 'lucide-vue-next'
+import { Radio, Copy, Disc, Music, User, Library, Youtube, Search, Plus, Send, Clock, Key } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { getStation, getGlobalLibrary } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
-import { saveStation, removeStation } from '../services/storage'
+import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
+import DJDashboard from './DJDashboard.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -295,13 +363,74 @@ function leave() {
   router.push('/')
 }
 
+const showDJModal = ref(false)
+const inputDJToken = ref('')
+const validatingDJ = ref(false)
+const djModalError = ref('')
+
+function openDJLoginModal() {
+  inputDJToken.value = store.djToken || ''
+  djModalError.value = ''
+  showDJModal.value = true
+}
+
+async function handleClaimDJ() {
+  const token = inputDJToken.value.trim()
+  if (!token) return
+  validatingDJ.value = true
+  djModalError.value = ''
+
+  try {
+    const data = await getStation(store.stationId, token)
+    if (data.role === 'dj') {
+      if (data.hasDJOnline) {
+        djModalError.value = 'Já existe um DJ conectado nesta estação no momento.'
+        return
+      }
+      disconnect()
+      store.setStation(store.stationId, token, 'dj')
+      saveStation(store.stationId, 'dj', token)
+      showDJModal.value = false
+    } else {
+      djModalError.value = 'Token de DJ inválido para esta estação.'
+    }
+  } catch (e) {
+    djModalError.value = 'Falha ao validar token do DJ.'
+  } finally {
+    validatingDJ.value = false
+  }
+}
+
 onMounted(async () => {
   const id = route.params.stationId
   if (id) {
     store.stationId = id
-    saveStation(id, 'listener', null)
+
+    // Verifica se possui token do DJ via query param (?token=) ou salvo no histórico
+    const queryToken = route.query.token
+    let candidateToken = queryToken
+    if (!candidateToken) {
+      const saved = getSavedStations().find(s => s.id === id)
+      if (saved && saved.role === 'dj' && saved.token) {
+        candidateToken = saved.token
+      }
+    }
+
     try {
-      const data = await getStation(id)
+      const data = await getStation(id, candidateToken)
+      store.hasDJOnline = !!data.hasDJOnline
+
+      // Se o token foi validado como DJ e não havia DJ ativo bloqueando
+      if (data.role === 'dj' && candidateToken) {
+        store.setStation(id, candidateToken, 'dj')
+        saveStation(id, 'dj', candidateToken)
+        return
+      }
+
+      // Caso contrário, entra como ouvinte
+      store.role = 'listener'
+      saveStation(id, 'listener', null)
+
       if (data.state) store.setState(data.state)
       if (data.playlist) store.setPlaylist(data.playlist)
       if (data.suggestions) store.setSuggestions(data.suggestions)

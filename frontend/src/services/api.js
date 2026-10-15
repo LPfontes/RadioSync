@@ -17,8 +17,12 @@ export async function createStation() {
   return data
 }
 
-export async function getStation(stationId) {
-  const { data } = await api.get(`/api/v1/stations/${stationId}`)
+export async function getStation(stationId, token = null) {
+  const config = {}
+  if (token) {
+    config.headers = { Authorization: `Bearer ${token}` }
+  }
+  const { data } = await api.get(`/api/v1/stations/${stationId}`, config)
   return data
 }
 

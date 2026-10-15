@@ -7,7 +7,12 @@
           <span class="font-bold text-emerald-500">RadioSync — DJ</span>
           <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
         </div>
-        <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+        <div class="flex items-center gap-3">
+          <button @click="switchToListener" class="text-xs text-zinc-400 hover:text-amber-400 transition-colors" title="Voltar a ser ouvinte liberando a vaga de DJ">
+            Entregar cargo de DJ
+          </button>
+          <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+        </div>
       </div>
     </header>
 
@@ -700,6 +705,13 @@ function formatTime(seconds) {
 
 function copyCode() {
   navigator.clipboard.writeText(store.stationId)
+}
+
+function switchToListener() {
+  disconnect()
+  store.role = 'listener'
+  store.djToken = null
+  saveStation(store.stationId, 'listener', null)
 }
 
 function leave() {

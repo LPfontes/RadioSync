@@ -6,8 +6,7 @@ import Admin from '../views/Admin.vue'
 
 const routes = [
   { path: '/', name: 'Home', component: Home },
-  { path: '/radio/:stationId', name: 'Listen', component: Listen },
-  { path: '/dj/:stationId', name: 'DJDashboard', component: DJDashboard },
+  { path: '/radio/:stationId', name: 'Station', component: Listen },
   { path: '/admin', name: 'Admin', component: Admin },
 ]
 

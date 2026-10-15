@@ -35,7 +35,11 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 	role := "listener"
 	token := r.URL.Query().Get("token")
 	if token != "" && auth.ValidateDJToken(token, stationID) {
-		role = "dj"
+		if !station.Hub.HasDJConnected() {
+			role = "dj"
+		} else {
+			log.Printf("token de DJ fornecido para a estação %s, porém já existe um DJ conectado. Entrando como ouvinte.", stationID)
+		}
 	}
 
 	conn, err := upgrader.Upgrade(w, r, nil)

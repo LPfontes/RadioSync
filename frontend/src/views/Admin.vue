@@ -473,7 +473,7 @@ async function removeTrack(stationId, trackId) {
 function enterAsDJ(stationId, djToken) {
   store.setStation(stationId, djToken, 'dj')
   saveStation(stationId, 'dj', djToken)
-  router.push(`/dj/${stationId}`)
+  router.push(`/radio/${stationId}`)
 }
 
 function openFullListenerPage(stationId) {

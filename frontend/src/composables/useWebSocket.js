@@ -56,6 +56,9 @@ export function useWebSocket(onConnected) {
       case 'SUGGESTIONS_UPDATED':
         store.setSuggestions(msg.suggestions)
         break
+      case 'DJ_STATUS':
+        store.hasDJOnline = !!msg.hasDJOnline
+        break
       case 'SYNC':
         store.state.seekOffset = msg.position
         store.state.startedAt = Date.now()

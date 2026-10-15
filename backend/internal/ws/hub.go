@@ -22,6 +22,17 @@ func (h *Hub) ClientCount() int {
 	return len(h.Clients)
 }
 
+func (h *Hub) HasDJConnected() bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+	for _, client := range h.Clients {
+		if client.Role == "dj" {
+			return true
+		}
+	}
+	return false
+}
+
 func NewHub(stationID string) *Hub {
 	return &Hub{
 		StationID:  stationID,
@@ -38,8 +49,19 @@ func (h *Hub) Run() {
 		case client := <-h.Register:
 			h.mu.Lock()
 			h.Clients[client.ID] = client
+			hasDJ := false
+			for _, c := range h.Clients {
+				if c.Role == "dj" {
+					hasDJ = true
+					break
+				}
+			}
 			h.mu.Unlock()
 			log.Printf("cliente conectado: %s (role: %s) na estação %s", client.ID, client.Role, h.StationID)
+			h.BroadcastJSON(map[string]interface{}{
+				"type":        "DJ_STATUS",
+				"hasDJOnline": hasDJ,
+			})
 
 		case client := <-h.Unregister:
 			h.mu.Lock()
@@ -47,8 +69,19 @@ func (h *Hub) Run() {
 				delete(h.Clients, client.ID)
 				close(client.Send)
 			}
+			hasDJ := false
+			for _, c := range h.Clients {
+				if c.Role == "dj" {
+					hasDJ = true
+					break
+				}
+			}
 			h.mu.Unlock()
 			log.Printf("cliente desconectado: %s", client.ID)
+			h.BroadcastJSON(map[string]interface{}{
+				"type":        "DJ_STATUS",
+				"hasDJOnline": hasDJ,
+			})
 
 		case message := <-h.Broadcast:
 			h.mu.RLock()
