@@ -26,6 +26,11 @@ export async function getStation(stationId, token = null) {
   return data
 }
 
+export async function claimDJRole(stationId) {
+  const { data } = await api.post(`/api/v1/stations/${stationId}/claim-dj`)
+  return data
+}
+
 export async function uploadMusic(stationId, file, token, category = '', theme = '') {
   const form = new FormData()
   form.append('file', file)

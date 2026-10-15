@@ -116,6 +116,42 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 	})
 }
 
+func ClaimDJRole(w http.ResponseWriter, r *http.Request) {
+	id := chi.URLParam(r, "stationId")
+
+	stationsMu.RLock()
+	station, ok := stations[id]
+	stationsMu.RUnlock()
+
+	if !ok {
+		http.Error(w, "estação não encontrada", http.StatusNotFound)
+		return
+	}
+
+	if station.Hub != nil && station.Hub.HasDJConnected() {
+		http.Error(w, "já existe um DJ conectado nesta estação no momento", http.StatusConflict)
+		return
+	}
+
+	token, err := auth.GenerateDJToken(id)
+	if err != nil {
+		http.Error(w, "erro ao gerar token", http.StatusInternalServerError)
+		return
+	}
+
+	station.Lock()
+	station.DJ = token
+	station.Unlock()
+
+	go SaveStations()
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]string{
+		"stationId": id,
+		"djToken":   token,
+	})
+}
+
 func GetStationByID(id string) *model.Station {
 	stationsMu.RLock()
 	defer stationsMu.RUnlock()

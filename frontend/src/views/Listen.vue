@@ -22,11 +22,12 @@
           <!-- Botão só aparece se NÃO houver ninguém com o cargo DJ conectado no momento -->
           <button
             v-if="!store.hasDJOnline"
-            @click="openDJLoginModal"
-            class="text-xs px-2.5 py-1 bg-amber-600 hover:bg-amber-500 text-white rounded-lg font-medium transition-colors flex items-center gap-1 shadow-sm"
+            @click="handleClaimDJ"
+            :disabled="claimingDJ"
+            class="text-xs px-2.5 py-1 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-60 text-white rounded-lg font-medium transition-colors flex items-center gap-1 shadow-sm"
           >
             <Key class="w-3.5 h-3.5" />
-            Entrar como DJ
+            {{ claimingDJ ? 'Assumindo...' : 'Entrar como DJ' }}
           </button>
           <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
         </div>
@@ -196,51 +197,6 @@
         </div>
       </div>
     </div>
-
-    <!-- Modal para Entrar como DJ -->
-    <div v-if="showDJModal" class="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 z-50">
-      <div class="bg-zinc-800 border border-zinc-700 rounded-xl max-w-md w-full p-5 space-y-4 shadow-xl">
-        <div class="flex items-center justify-between border-b border-zinc-700 pb-3">
-          <div class="flex items-center gap-2">
-            <Key class="w-4 h-4 text-amber-500" />
-            <h3 class="font-bold text-sm text-zinc-100">Assumir como DJ</h3>
-          </div>
-          <button @click="showDJModal = false" class="text-zinc-400 hover:text-zinc-200 text-xs">✕</button>
-        </div>
-
-        <p class="text-xs text-zinc-400">
-          Insira o token de validação de DJ gerado na criação da estação para assumir os controles da rádio.
-        </p>
-
-        <div class="space-y-1.5">
-          <label class="block text-xs font-medium text-zinc-300">Token de Validação do DJ</label>
-          <input
-            v-model="inputDJToken"
-            placeholder="Cole o token JWT do DJ aqui..."
-            type="password"
-            @keyup.enter="handleClaimDJ"
-            class="w-full bg-zinc-900 border border-zinc-700 rounded-lg px-3 py-2 text-xs font-mono text-zinc-200 outline-none focus:ring-1 focus:ring-amber-500"
-          />
-          <p v-if="djModalError" class="text-xs text-red-400 font-medium pt-1">{{ djModalError }}</p>
-        </div>
-
-        <div class="flex justify-end gap-2 pt-2 border-t border-zinc-700">
-          <button
-            @click="showDJModal = false"
-            class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium transition-colors"
-          >
-            Cancelar
-          </button>
-          <button
-            @click="handleClaimDJ"
-            :disabled="validatingDJ || !inputDJToken.trim()"
-            class="px-4 py-1.5 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium transition-colors"
-          >
-            {{ validatingDJ ? 'Validando...' : 'Confirmar e Entrar como DJ' }}
-          </button>
-        </div>
-      </div>
-    </div>
   </div>
 </template>
 
@@ -249,7 +205,7 @@ import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Radio, Copy, Disc, Music, User, Library, Youtube, Search, Plus, Send, Clock, Key } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
-import { getStation, getGlobalLibrary } from '../services/api'
+import { getStation, getGlobalLibrary, claimDJRole } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
@@ -363,41 +319,27 @@ function leave() {
   router.push('/')
 }
 
-const showDJModal = ref(false)
-const inputDJToken = ref('')
-const validatingDJ = ref(false)
-const djModalError = ref('')
-
-function openDJLoginModal() {
-  inputDJToken.value = store.djToken || ''
-  djModalError.value = ''
-  showDJModal.value = true
-}
+const claimingDJ = ref(false)
 
 async function handleClaimDJ() {
-  const token = inputDJToken.value.trim()
-  if (!token) return
-  validatingDJ.value = true
-  djModalError.value = ''
+  if (store.hasDJOnline) {
+    alert('Já existe um DJ conectado nesta estação no momento.')
+    return
+  }
+  claimingDJ.value = true
 
   try {
-    const data = await getStation(store.stationId, token)
-    if (data.role === 'dj') {
-      if (data.hasDJOnline) {
-        djModalError.value = 'Já existe um DJ conectado nesta estação no momento.'
-        return
-      }
+    const data = await claimDJRole(store.stationId)
+    if (data.djToken) {
       disconnect()
-      store.setStation(store.stationId, token, 'dj')
-      saveStation(store.stationId, 'dj', token)
-      showDJModal.value = false
-    } else {
-      djModalError.value = 'Token de DJ inválido para esta estação.'
+      store.setStation(store.stationId, data.djToken, 'dj')
+      saveStation(store.stationId, 'dj', data.djToken)
     }
   } catch (e) {
-    djModalError.value = 'Falha ao validar token do DJ.'
+    const msg = e?.response?.data || 'Não foi possível assumir como DJ no momento.'
+    alert(typeof msg === 'string' ? msg.trim() : 'Erro ao assumir cargo de DJ')
   } finally {
-    validatingDJ.value = false
+    claimingDJ.value = false
   }
 }
 
