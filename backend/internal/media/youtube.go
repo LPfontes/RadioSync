@@ -106,14 +106,16 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 
 	if cookiesPath != "" {
 		strategies = append(strategies,
-			downloadStrategy{cookies: cookiesPath, clients: ""},
+			downloadStrategy{cookies: cookiesPath, clients: fmt.Sprintf("youtubepot-bgutilhttp:base_url=%s", potURL)},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=mweb,web" + potArg},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=web_embedded,mweb,web" + potArg},
 			downloadStrategy{cookies: cookiesPath, clients: "youtube:player_client=tv,mweb"},
+			downloadStrategy{cookies: cookiesPath, clients: ""},
 		)
 	}
 
 	strategies = append(strategies,
+		downloadStrategy{cookies: "", clients: fmt.Sprintf("youtubepot-bgutilhttp:base_url=%s", potURL)},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=mweb,web" + potArg},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=web_embedded,android,ios"},
 		downloadStrategy{cookies: "", clients: "youtube:player_client=tv,mweb"},
