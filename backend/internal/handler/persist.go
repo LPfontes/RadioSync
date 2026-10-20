@@ -21,6 +21,7 @@ type savedStation struct {
 	Repository  []model.Track          `json:"repository"`
 	Playlist    []model.Track          `json:"playlist"`
 	Suggestions []model.SongSuggestion `json:"suggestions"`
+	Mixer       []model.MixerChannel   `json:"mixer,omitempty"`
 }
 
 var (
@@ -167,6 +168,7 @@ func SaveStations() {
 			Repository:  s.Repository,
 			Playlist:    s.Playlist,
 			Suggestions: s.Suggestions,
+			Mixer:       s.Mixer,
 		})
 		s.RUnlock()
 	}
@@ -366,6 +368,12 @@ func LoadStations() {
 			station.Suggestions = ss.Suggestions
 		} else {
 			station.Suggestions = make([]model.SongSuggestion, 0)
+		}
+
+		if ss.Mixer != nil {
+			station.Mixer = ss.Mixer
+		} else {
+			station.Mixer = make([]model.MixerChannel, 0)
 		}
 
 		currentStation := station

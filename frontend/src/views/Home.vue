@@ -13,7 +13,7 @@
 
       <div v-if="savedStations.length > 0" class="bg-zinc-800 rounded-lg p-4 space-y-2">
         <h2 class="text-xs font-medium text-zinc-400 uppercase tracking-wide">Salas Recentes</h2>
-        <button v-for="s in savedStations" :key="s.id" @click="enterSaved(s)" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-700 transition-colors text-left">
+        <div v-for="s in savedStations" :key="s.id" @click="enterSaved(s)" class="w-full flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-zinc-700 transition-colors text-left cursor-pointer">
           <div class="w-8 h-8 rounded-full bg-emerald-600/20 flex items-center justify-center text-xs font-bold text-emerald-500">
             {{ s.role === 'dj' ? 'DJ' : 'L' }}
           </div>
@@ -21,10 +21,10 @@
             <span class="text-sm font-medium">{{ s.id }}</span>
             <span class="text-xs text-zinc-500 ml-2">{{ s.role === 'dj' ? '(DJ)' : '(Ouvinte)' }}</span>
           </div>
-          <button @click.stop="remove(s.id)" class="text-zinc-600 hover:text-zinc-400">
+          <button @click.stop="remove(s.id)" class="text-zinc-600 hover:text-zinc-400 p-1 rounded hover:bg-zinc-600/50">
             <X class="w-3.5 h-3.5" />
           </button>
-        </button>
+        </div>
       </div>
 
       <div class="bg-zinc-800 rounded-lg p-6 space-y-4">

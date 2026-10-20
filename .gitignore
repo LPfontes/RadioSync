@@ -12,6 +12,10 @@ musicas/*
 *.flac
 *.aac
 
+# Presets and static sounds
+!frontend/public/sounds/
+!frontend/public/sounds/*
+
 # Environment files
 .env
 .env.local

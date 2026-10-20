@@ -56,12 +56,18 @@ export function useWebSocket(onConnected) {
       case 'SUGGESTIONS_UPDATED':
         store.setSuggestions(msg.suggestions)
         break
+      case 'MIXER_UPDATED':
+        store.setMixer(msg.channels)
+        break
       case 'DJ_STATUS':
         store.hasDJOnline = !!msg.hasDJOnline
         break
       case 'SYNC':
         store.state.seekOffset = msg.position
         store.state.startedAt = Date.now()
+        if (msg.mixer) {
+          store.setMixer(msg.mixer)
+        }
         break
     }
   }

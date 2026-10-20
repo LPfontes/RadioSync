@@ -8,6 +8,7 @@ export const useStationStore = defineStore('station', () => {
   const playlist = ref([])
   const repository = ref([])
   const suggestions = ref([])
+  const mixer = ref([])
   const hasDJOnline = ref(false)
   const state = ref({
     isPlaying: false,
@@ -39,6 +40,10 @@ export const useStationStore = defineStore('station', () => {
     suggestions.value = newSuggestions || []
   }
 
+  function setMixer(newMixer) {
+    mixer.value = Array.isArray(newMixer) ? [...newMixer] : []
+  }
+
   function reset() {
     stationId.value = null
     role.value = null
@@ -46,12 +51,13 @@ export const useStationStore = defineStore('station', () => {
     playlist.value = []
     repository.value = []
     suggestions.value = []
+    mixer.value = []
     hasDJOnline.value = false
     state.value = { isPlaying: false, startedAt: 0, seekOffset: 0, currentSong: '', duration: 0 }
   }
 
   return {
-    stationId, role, djToken, hasDJOnline, playlist, repository, suggestions, state,
-    setStation, setState, setPlaylist, setRepository, setSuggestions, reset,
+    stationId, role, djToken, hasDJOnline, playlist, repository, suggestions, mixer, state,
+    setStation, setState, setPlaylist, setRepository, setSuggestions, setMixer, reset,
   }
 })

@@ -88,6 +88,7 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 	state := station.State
 	repo := station.Repository
 	suggestions := station.Suggestions
+	mixer := station.Mixer
 	station.RUnlock()
 
 	w.Header().Set("Content-Type", "application/json")
@@ -111,6 +112,7 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 		"state":       state,
 		"repository":  repo,
 		"suggestions": suggestions,
+		"mixer":       mixer,
 		"hasDJOnline": hasDJ,
 		"role":        role,
 	})

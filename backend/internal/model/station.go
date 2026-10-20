@@ -40,6 +40,18 @@ type SongSuggestion struct {
 	Status      string `json:"status"` // "pending", "approved", "rejected"
 }
 
+type MixerChannel struct {
+	ID        string  `json:"id"`
+	Name      string  `json:"name"`
+	Type      string  `json:"type"`      // "preset" ou "track"
+	PresetKey string  `json:"presetKey"` // "rain", "thunder", "cafe", "fireplace", "waves", "wind", "forest", "vinyl"
+	TrackURL  string  `json:"trackUrl,omitempty"`
+	Volume    float64 `json:"volume"`    // 0.0 a 1.0 (ex: 0.35)
+	IsPlaying bool    `json:"isPlaying"`
+	Muted     bool    `json:"muted"`
+	Loop      bool    `json:"loop"`      // true = repetir em loop, false = tocar 1 vez
+}
+
 type Station struct {
 	ID          string
 	DJ          string
@@ -48,6 +60,7 @@ type Station struct {
 	Repository  []Track
 	Playlist    []Track
 	Suggestions []SongSuggestion
+	Mixer       []MixerChannel
 	mu          sync.RWMutex
 }
 
@@ -59,6 +72,7 @@ func NewStation(id, dj string) *Station {
 		Repository:  make([]Track, 0),
 		Playlist:    make([]Track, 0),
 		Suggestions: make([]SongSuggestion, 0),
+		Mixer:       make([]MixerChannel, 0),
 	}
 	s.Hub = ws.NewHub(id)
 	go s.Hub.Run()
@@ -90,6 +104,11 @@ type SuggestionsMsg struct {
 	Suggestions []SongSuggestion `json:"suggestions"`
 }
 
+type MixerMsg struct {
+	Type     string         `json:"type"`
+	Channels []MixerChannel `json:"channels"`
+}
+
 func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	var incoming IncomingMessage
 	if err := json.Unmarshal(msg, &incoming); err != nil {
@@ -102,11 +121,13 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 		pos := s.calcPosition()
 		isPlaying := s.State.IsPlaying
 		currentSong := s.State.CurrentSong
+		mixer := s.Mixer
 		s.RUnlock()
-		log.Printf("SYNC_REQUEST de %s: pos=%.2f isPlaying=%v song=%s", client.ID, pos, isPlaying, currentSong)
+		log.Printf("SYNC_REQUEST de %s: pos=%.2f isPlaying=%v song=%s mixerChannels=%d", client.ID, pos, isPlaying, currentSong, len(mixer))
 		data, _ := json.Marshal(map[string]interface{}{
 			"type":     "SYNC",
 			"position": pos,
+			"mixer":    mixer,
 		})
 		select {
 		case client.Send <- data:
@@ -419,6 +440,55 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 	case "CLEAR_SUGGESTIONS":
 		s.Suggestions = make([]SongSuggestion, 0)
 		s.broadcastSuggestions()
+
+	case "MIXER_UPDATE":
+		var data struct {
+			Channels []MixerChannel `json:"channels"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err == nil {
+			if data.Channels == nil {
+				data.Channels = make([]MixerChannel, 0)
+			}
+			s.Mixer = data.Channels
+			s.broadcastMixer()
+		}
+
+	case "MIXER_SET_CHANNEL":
+		var data struct {
+			Channel MixerChannel `json:"channel"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err == nil && data.Channel.ID != "" {
+			found := false
+			for i, ch := range s.Mixer {
+				if ch.ID == data.Channel.ID {
+					s.Mixer[i] = data.Channel
+					found = true
+					break
+				}
+			}
+			if !found {
+				s.Mixer = append(s.Mixer, data.Channel)
+			}
+			s.broadcastMixer()
+		}
+
+	case "MIXER_REMOVE_CHANNEL":
+		var data struct {
+			ID string `json:"id"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err == nil {
+			for i, ch := range s.Mixer {
+				if ch.ID == data.ID {
+					s.Mixer = append(s.Mixer[:i], s.Mixer[i+1:]...)
+					s.broadcastMixer()
+					break
+				}
+			}
+		}
+
+	case "MIXER_CLEAR":
+		s.Mixer = make([]MixerChannel, 0)
+		s.broadcastMixer()
 	}
 }
 
@@ -528,6 +598,17 @@ func (s *Station) broadcastSuggestions() {
 	s.Hub.BroadcastJSON(SuggestionsMsg{
 		Type:        "SUGGESTIONS_UPDATED",
 		Suggestions: s.Suggestions,
+	})
+}
+
+func (s *Station) broadcastMixer() {
+	channels := s.Mixer
+	if channels == nil {
+		channels = make([]MixerChannel, 0)
+	}
+	s.Hub.BroadcastJSON(MixerMsg{
+		Type:     "MIXER_UPDATED",
+		Channels: channels,
 	})
 }
 

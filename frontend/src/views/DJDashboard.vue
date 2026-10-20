@@ -31,6 +31,13 @@
         <Player @toggle-play="handleTogglePlay" />
       </div>
 
+      <!-- Mixer de Sons de Fundo e Efeitos -->
+      <AudioMixer
+        :is-d-j="true"
+        :available-tracks="allAvailableTracks"
+        @update-mixer="handleUpdateMixer"
+      />
+
       <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
         <!-- Esquerda: Repositório / Biblioteca Global / Sugestões -->
         <div class="bg-zinc-800 rounded-lg p-4 flex flex-col">
@@ -421,6 +428,7 @@ import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, save
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
+import AudioMixer from '../components/AudioMixer.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -506,6 +514,7 @@ onMounted(async () => {
       if (data.playlist) store.setPlaylist(data.playlist)
       if (data.repository) store.setRepository(data.repository)
       if (data.suggestions) store.setSuggestions(data.suggestions)
+      if (data.mixer) store.setMixer(data.mixer)
     } catch (e) {
       removeStation(id)
       store.reset()
@@ -712,6 +721,21 @@ function switchToListener() {
   store.role = 'listener'
   store.djToken = null
   saveStation(store.stationId, 'listener', null)
+}
+
+const allAvailableTracks = computed(() => {
+  const map = new Map()
+  ;(store.repository || []).forEach(t => {
+    if (t && t.id) map.set(t.id, t)
+  })
+  ;(globalTracks.value || []).forEach(t => {
+    if (t && t.id && !map.has(t.id)) map.set(t.id, t)
+  })
+  return Array.from(map.values())
+})
+
+function handleUpdateMixer(channels) {
+  send({ type: 'MIXER_UPDATE', data: { channels } })
 }
 
 function leave() {

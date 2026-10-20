@@ -61,6 +61,11 @@
         <Player ref="playerRef" @toggle-play="handleTogglePlay" />
       </div>
 
+      <!-- Mixer da Estação para Ouvintes -->
+      <AudioMixer
+        :is-d-j="false"
+      />
+
       <!-- Seção Sugerir Músicas para Ouvintes -->
       <div class="bg-zinc-800 rounded-lg p-4 space-y-4">
         <div class="flex items-center justify-between border-b border-zinc-700 pb-3">
@@ -209,6 +214,7 @@ import { getStation, getGlobalLibrary, claimDJRole } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
+import AudioMixer from '../components/AudioMixer.vue'
 import DJDashboard from './DJDashboard.vue'
 
 const route = useRoute()
@@ -376,6 +382,7 @@ onMounted(async () => {
       if (data.state) store.setState(data.state)
       if (data.playlist) store.setPlaylist(data.playlist)
       if (data.suggestions) store.setSuggestions(data.suggestions)
+      if (data.mixer) store.setMixer(data.mixer)
       if (route.query.autoJoin) {
         enterStation()
       }
