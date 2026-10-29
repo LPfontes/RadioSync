@@ -77,6 +77,7 @@ func UploadMusic(w http.ResponseWriter, r *http.Request) {
 
 	category := strings.TrimSpace(r.FormValue("category"))
 	theme := strings.TrimSpace(r.FormValue("theme"))
+	coverURL := strings.TrimSpace(r.FormValue("coverUrl"))
 
 	track := model.Track{
 		ID:       trackID,
@@ -86,6 +87,7 @@ func UploadMusic(w http.ResponseWriter, r *http.Request) {
 		Duration: duration,
 		Category: category,
 		Theme:    theme,
+		CoverURL: coverURL,
 	}
 
 	station.Lock()

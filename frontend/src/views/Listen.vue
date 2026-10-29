@@ -3,140 +3,134 @@
   <DJDashboard v-if="store.role === 'dj'" />
 
   <!-- Modo Ouvinte -->
-  <div v-else class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
-    <header class="border-b border-zinc-800 px-4 py-3">
-      <div class="max-w-2xl mx-auto flex items-center justify-between">
-        <div class="flex items-center gap-2.5">
-          <Disc class="w-5 h-5 text-emerald-500" />
-          <span class="font-bold text-emerald-500">RadioSync</span>
-          <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
-          <span v-if="store.hasDJOnline" class="flex items-center gap-1 text-[11px] bg-emerald-950/60 text-emerald-400 border border-emerald-800/50 px-2 py-0.5 rounded-full font-medium">
-            <span class="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+  <div v-else class="app-page">
+    <header class="app-header">
+      <div class="header-inner header-inner-sm">
+        <div class="header-brand">
+          <Disc class="icon-lg text-emerald" />
+          <span class="brand-name">RadioSync</span>
+          <span class="badge-code">{{ store.stationId }}</span>
+          <span v-if="store.hasDJOnline" class="badge badge-live">
+            <span class="status-dot animate-pulse"></span>
             DJ Ao Vivo
           </span>
-          <span v-else class="flex items-center gap-1 text-[11px] bg-zinc-800 text-zinc-400 border border-zinc-700 px-2 py-0.5 rounded-full font-medium">
+          <span v-else class="badge badge-neutral">
             Sem DJ no momento
           </span>
         </div>
-        <div class="flex items-center gap-3">
+        <div class="header-actions">
           <!-- Botão só aparece se NÃO houver ninguém com o cargo DJ conectado no momento -->
           <button
             v-if="!store.hasDJOnline"
             @click="handleClaimDJ"
             :disabled="claimingDJ"
-            class="text-xs px-2.5 py-1 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-60 text-white rounded-lg font-medium transition-colors flex items-center gap-1 shadow-sm"
+            class="btn btn-amber"
           >
-            <Key class="w-3.5 h-3.5" />
+            <Key class="icon-sm" />
             {{ claimingDJ ? 'Assumindo...' : 'Entrar como DJ' }}
           </button>
-          <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+          <button @click="leave" class="btn-text">Sair</button>
         </div>
       </div>
     </header>
 
-    <div v-if="!showPlayer" class="flex-1 flex items-center justify-center p-4">
-      <div class="text-center space-y-4">
-        <div class="w-20 h-20 mx-auto rounded-full bg-emerald-600/20 flex items-center justify-center">
-          <Radio class="w-10 h-10 text-emerald-500" />
+    <div v-if="!showPlayer" class="enter-gate">
+      <div class="enter-gate-box">
+        <div class="enter-gate-icon">
+          <Radio class="icon-3xl text-emerald" />
         </div>
-        <p class="text-zinc-300">Clique para entrar na estação</p>
-        <button @click="enterStation" class="px-6 py-3 bg-emerald-600 hover:bg-emerald-500 rounded-lg font-medium transition-colors">
+        <p class="enter-gate-text">Clique para entrar na estação</p>
+        <button @click="enterStation" class="btn btn-primary btn-lg">
           Entrar na Estação
         </button>
       </div>
     </div>
 
-    <div v-else class="flex-1 max-w-2xl w-full mx-auto p-4 space-y-6">
-      <div class="bg-zinc-800 rounded-lg p-4 text-center">
-        <p class="text-xs text-zinc-400 mb-1">Código da estação</p>
-        <div class="flex items-center justify-center gap-3">
-          <span class="text-2xl font-bold tracking-widest text-emerald-400 font-mono">{{ store.stationId }}</span>
-          <button @click="copyCode" class="text-xs text-zinc-400 hover:text-emerald-400 transition-colors">
-            <Copy class="w-4 h-4" />
+    <div v-else class="listener-content">
+      <div class="station-code-card">
+        <p class="station-code-label">Código da estação</p>
+        <div class="station-code-row">
+          <span class="station-code-value">{{ store.stationId }}</span>
+          <button @click="copyCode" class="btn-text copy-btn">
+            <Copy class="icon-md" />
           </button>
         </div>
       </div>
 
-      <div class="bg-zinc-800 rounded-lg p-6">
-        <Player ref="playerRef" @toggle-play="handleTogglePlay" />
-      </div>
-
       <!-- Mixer da Estação para Ouvintes -->
-      <AudioMixer
-        :is-d-j="false"
-      />
+      <AudioMixer :is-d-j="false" />
 
       <!-- Seção Sugerir Músicas para Ouvintes -->
-      <div class="bg-zinc-800 rounded-lg p-4 space-y-4">
-        <div class="flex items-center justify-between border-b border-zinc-700 pb-3">
-          <h3 class="text-sm font-semibold text-zinc-200 flex items-center gap-2">
-            <Music class="w-4 h-4 text-emerald-400" />
+      <div class="card suggest-section">
+        <div class="suggest-header">
+          <h3 class="suggest-title">
+            <Music class="icon-md text-emerald" />
             Sugerir Música para o DJ
           </h3>
-          <span class="text-xs text-zinc-400 flex items-center gap-1">
-            <User class="w-3.5 h-3.5" />
+          <span class="nickname-label">
+            <User class="icon-sm" />
             Apelido:
           </span>
         </div>
 
-        <div class="flex gap-2">
+        <div class="nickname-row">
           <input
             v-model="listenerName"
             @change="saveNickname"
             placeholder="Seu nome / apelido"
-            class="bg-zinc-700 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500 w-full"
+            class="input"
           />
         </div>
 
         <!-- Abas de Sugestão -->
-        <div class="flex border-b border-zinc-700 gap-2 pb-2">
+        <div class="tabs-bar">
           <button
             @click="suggestMode = 'library'"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-            :class="suggestMode === 'library' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'"
+            class="tab-btn"
+            :class="{ active: suggestMode === 'library' }"
           >
-            <Library class="w-3.5 h-3.5" />
+            <Library class="icon-sm" />
             Biblioteca do Servidor
           </button>
           <button
             @click="suggestMode = 'custom'"
-            class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors"
-            :class="suggestMode === 'custom' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'"
+            class="tab-btn"
+            :class="{ active: suggestMode === 'custom' }"
           >
-            <Youtube class="w-3.5 h-3.5 text-red-400" />
+            <Youtube class="icon-sm text-red" />
             Link YouTube / Título
           </button>
         </div>
 
         <!-- Aba Biblioteca -->
-        <div v-if="suggestMode === 'library'" class="space-y-3">
-          <div class="relative">
-            <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
+        <div v-if="suggestMode === 'library'" class="suggest-tab-body">
+          <div class="search-wrapper">
+            <Search class="icon-sm search-icon" />
             <input
               v-model="searchQuery"
               placeholder="Buscar música no catálogo..."
-              class="w-full bg-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+              class="search-input"
             />
           </div>
 
-          <div v-if="loadingLibrary" class="text-zinc-500 text-xs text-center py-4">
+          <div v-if="loadingLibrary" class="empty-state">
             Carregando músicas...
           </div>
-          <div v-else-if="filteredLibraryTracks.length === 0" class="text-zinc-500 text-xs text-center py-4">
+          <div v-else-if="filteredLibraryTracks.length === 0" class="empty-state">
             Nenhuma música encontrada
           </div>
-          <div v-else class="space-y-1 max-h-48 overflow-y-auto pr-1">
+          <div v-else class="library-list">
             <div
               v-for="track in filteredLibraryTracks"
               :key="track.id"
-              class="flex items-center justify-between p-2 rounded hover:bg-zinc-700/70 text-xs group transition-colors"
+              class="library-item"
             >
-              <span class="truncate flex-1 text-zinc-200">{{ track.title }}</span>
+              <span class="library-item-title truncate">{{ track.title }}</span>
               <button
                 @click="suggestLibraryTrack(track)"
-                class="px-2 py-1 bg-emerald-600/80 hover:bg-emerald-600 text-white text-[11px] rounded flex items-center gap-1 transition-colors shrink-0 ml-2"
+                class="btn btn-primary btn-sm"
               >
-                <Plus class="w-3 h-3" />
+                <Plus class="icon-xs" />
                 Sugerir
               </button>
             </div>
@@ -144,63 +138,73 @@
         </div>
 
         <!-- Aba Personalizada / YouTube -->
-        <div v-else class="space-y-3">
+        <div v-else class="suggest-tab-body">
           <input
             v-model="customInput"
             @keyup.enter="suggestCustomTrack"
             placeholder="Cole a URL do YouTube ou digite o nome da música..."
-            class="w-full bg-zinc-700 rounded-lg px-3 py-2 text-xs outline-none focus:ring-1 focus:ring-emerald-500"
+            class="input"
           />
-          <div class="flex justify-end">
+          <div class="custom-actions">
             <button
               @click="suggestCustomTrack"
               :disabled="!customInput.trim()"
-              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-700 disabled:opacity-50 text-white rounded-lg text-xs font-medium flex items-center gap-1.5 transition-colors"
+              class="btn btn-primary btn-md"
             >
-              <Send class="w-3.5 h-3.5" />
+              <Send class="icon-sm" />
               Enviar Sugestão
             </button>
           </div>
         </div>
 
-        <p v-if="feedbackMsg" class="text-xs text-emerald-400 font-medium bg-emerald-950/40 p-2 rounded border border-emerald-800/40">
+        <p v-if="feedbackMsg" class="feedback-banner">
           {{ feedbackMsg }}
         </p>
 
         <!-- Lista de Sugestões Pendentes -->
-        <div v-if="store.suggestions && store.suggestions.length > 0" class="pt-3 border-t border-zinc-700/60">
-          <h4 class="text-xs font-medium text-zinc-400 mb-2 flex items-center gap-1">
-            <Clock class="w-3.5 h-3.5 text-amber-400" />
+        <div v-if="store.suggestions && store.suggestions.length > 0" class="pending-suggestions">
+          <h4 class="pending-title">
+            <Clock class="icon-sm text-amber" />
             Sugestões na Fila de Avaliação do DJ ({{ store.suggestions.length }})
           </h4>
-          <div class="space-y-1.5 max-h-36 overflow-y-auto pr-1">
+          <div class="pending-list">
             <div
               v-for="sug in store.suggestions"
               :key="sug.id"
-              class="flex items-center justify-between p-2 rounded bg-zinc-900/60 text-xs"
+              class="pending-item"
             >
-              <div class="truncate flex-1 mr-2">
-                <span class="text-zinc-200 font-medium block truncate">{{ sug.title }}</span>
-                <span class="text-[10px] text-zinc-500">Por: {{ sug.suggestedBy }}</span>
+              <div class="pending-info truncate">
+                <span class="pending-track-title truncate">{{ sug.title }}</span>
+                <span class="pending-author">Por: {{ sug.suggestedBy }}</span>
               </div>
-              <span class="text-[10px] bg-amber-500/20 text-amber-300 border border-amber-500/30 px-2 py-0.5 rounded shrink-0">
-                Pendente
-              </span>
+              <span class="badge badge-amber">Pendente</span>
             </div>
           </div>
         </div>
       </div>
 
-      <div class="bg-zinc-800 rounded-lg p-4">
-        <h3 class="text-sm font-medium text-zinc-400 mb-3">Playlist Atual</h3>
-        <div v-if="store.playlist.length === 0" class="text-zinc-500 text-sm text-center py-4">
+      <div class="card">
+        <h3 class="playlist-heading">Playlist Atual</h3>
+        <div v-if="store.playlist.length === 0" class="empty-state">
           Playlist vazia
         </div>
-        <div v-for="(track, i) in store.playlist" :key="track.id" class="flex items-center gap-3 py-2 border-b border-zinc-700 last:border-0">
-          <span class="text-xs text-zinc-500 w-5">{{ i + 1 }}</span>
-          <span class="text-sm" :class="i === 0 && store.state.isPlaying ? 'text-emerald-400 font-semibold' : ''">{{ track.title }}</span>
+        <div
+          v-for="(track, i) in store.playlist"
+          :key="track.id"
+          class="playlist-row"
+        >
+          <span class="playlist-index">{{ i + 1 }}</span>
+          <span
+            class="playlist-title"
+            :class="{ playing: i === 0 && store.state.isPlaying }"
+          >
+            {{ track.title }}
+          </span>
         </div>
       </div>
+
+      <!-- Barra Fixa do Player na Parte Inferior (Estilo YouTube Music) -->
+      <Player ref="playerRef" @toggle-play="handleTogglePlay" />
     </div>
   </div>
 </template>
@@ -354,7 +358,6 @@ onMounted(async () => {
   if (id) {
     store.stationId = id
 
-    // Verifica se possui token do DJ via query param (?token=) ou salvo no histórico
     const queryToken = route.query.token
     let candidateToken = queryToken
     if (!candidateToken) {
@@ -368,14 +371,12 @@ onMounted(async () => {
       const data = await getStation(id, candidateToken)
       store.hasDJOnline = !!data.hasDJOnline
 
-      // Se o token foi validado como DJ e não havia DJ ativo bloqueando
       if (data.role === 'dj' && candidateToken) {
         store.setStation(id, candidateToken, 'dj')
         saveStation(id, 'dj', candidateToken)
         return
       }
 
-      // Caso contrário, entra como ouvinte
       store.role = 'listener'
       saveStation(id, 'listener', null)
 
@@ -394,3 +395,225 @@ onMounted(async () => {
   }
 })
 </script>
+
+<style scoped>
+.brand-name {
+  font-weight: 700;
+  color: var(--emerald-500);
+}
+
+.enter-gate {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+}
+
+.enter-gate-box {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+}
+
+.enter-gate-icon {
+  width: 5rem;
+  height: 5rem;
+  border-radius: var(--radius-full);
+  background-color: rgba(5, 150, 105, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.enter-gate-text {
+  color: var(--zinc-300);
+}
+
+.listener-content {
+  flex: 1;
+  max-width: 42rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1rem 1rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.copy-btn:hover {
+  color: var(--emerald-400);
+}
+
+.suggest-section {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.suggest-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--zinc-700);
+  padding-bottom: 0.75rem;
+}
+
+.suggest-title {
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: var(--zinc-200);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.nickname-label {
+  font-size: 0.75rem;
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.nickname-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.suggest-tab-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.library-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.library-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease;
+}
+
+.library-item:hover {
+  background-color: rgba(63, 63, 70, 0.7);
+}
+
+.library-item-title {
+  flex: 1;
+  color: var(--zinc-200);
+  margin-right: 0.5rem;
+}
+
+.custom-actions {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.feedback-banner {
+  font-size: 0.75rem;
+  color: var(--emerald-400);
+  font-weight: 500;
+  background-color: rgba(2, 44, 34, 0.4);
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(6, 95, 70, 0.4);
+}
+
+.pending-suggestions {
+  padding-top: 0.75rem;
+  border-top: 1px solid rgba(63, 63, 70, 0.6);
+}
+
+.pending-title {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+  margin-bottom: 0.5rem;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.pending-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: 9rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.pending-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem;
+  border-radius: var(--radius-md);
+  background-color: rgba(24, 24, 27, 0.6);
+  font-size: 0.75rem;
+}
+
+.pending-info {
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+.pending-track-title {
+  color: var(--zinc-200);
+  font-weight: 500;
+  display: block;
+}
+
+.pending-author {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+}
+
+.playlist-heading {
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+  margin-bottom: 0.75rem;
+}
+
+.playlist-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem 0;
+  border-bottom: 1px solid var(--zinc-700);
+}
+
+.playlist-row:last-child {
+  border-bottom: 0;
+}
+
+.playlist-index {
+  font-size: 0.75rem;
+  color: var(--zinc-500);
+  width: 1.25rem;
+}
+
+.playlist-title {
+  font-size: 0.875rem;
+}
+
+.playlist-title.playing {
+  color: var(--emerald-400);
+  font-weight: 600;
+}
+</style>

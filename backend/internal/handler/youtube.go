@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -58,6 +59,11 @@ func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	coverURL := ""
+	if vid := extractYouTubeID(req.URL); vid != "" {
+		coverURL = fmt.Sprintf("https://img.youtube.com/vi/%s/hqdefault.jpg", vid)
+	}
+
 	track := model.Track{
 		ID:       trackID,
 		Title:    title,
@@ -66,6 +72,7 @@ func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
 		Duration: duration,
 		Category: strings.TrimSpace(req.Category),
 		Theme:    strings.TrimSpace(req.Theme),
+		CoverURL: coverURL,
 	}
 
 	station.Lock()
@@ -143,4 +150,23 @@ func GetCookiesStatusHandler(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"hasCookies": hasCookies,
 	})
+}
+
+func extractYouTubeID(urlStr string) string {
+	u, err := url.Parse(urlStr)
+	if err == nil {
+		if strings.Contains(u.Host, "youtu.be") {
+			return strings.TrimPrefix(u.Path, "/")
+		}
+		if strings.Contains(u.Host, "youtube.com") {
+			if v := u.Query().Get("v"); v != "" {
+				return v
+			}
+			parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+			if len(parts) >= 2 && (parts[0] == "shorts" || parts[0] == "embed" || parts[0] == "v") {
+				return parts[1]
+			}
+		}
+	}
+	return ""
 }

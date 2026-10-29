@@ -49,8 +49,8 @@ export async function downloadFromYouTube(stationId, youtubeUrl, token, category
   return data
 }
 
-export async function updateTrackMetadata(stationId, trackId, { title, category, theme }, token) {
-  const { data } = await api.put(`/api/v1/stations/${stationId}/tracks/${trackId}`, { title, category, theme }, {
+export async function updateTrackMetadata(stationId, trackId, { title, category, theme, coverUrl }, token) {
+  const { data } = await api.put(`/api/v1/stations/${stationId}/tracks/${trackId}`, { title, category, theme, coverUrl }, {
     headers: { 'Authorization': `Bearer ${token}` },
   })
   return data

@@ -333,6 +333,32 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 			}
 		}
 
+	case "REORDER_PLAYLIST":
+		var data struct {
+			FromIndex int `json:"fromIndex"`
+			ToIndex   int `json:"toIndex"`
+		}
+		if err := json.Unmarshal(incoming.Data, &data); err != nil {
+			return
+		}
+		n := len(s.Playlist)
+		if data.FromIndex < 0 || data.FromIndex >= n || data.ToIndex < 0 || data.ToIndex >= n || data.FromIndex == data.ToIndex {
+			return
+		}
+		item := s.Playlist[data.FromIndex]
+		newPl := make([]Track, 0, n)
+		for i, t := range s.Playlist {
+			if i != data.FromIndex {
+				newPl = append(newPl, t)
+			}
+		}
+		inserted := make([]Track, 0, n)
+		inserted = append(inserted, newPl[:data.ToIndex]...)
+		inserted = append(inserted, item)
+		inserted = append(inserted, newPl[data.ToIndex:]...)
+		s.Playlist = inserted
+		s.broadcastPlaylist()
+
 	case "APPROVE_SUGGESTION":
 		var data struct {
 			SuggestionID string `json:"suggestionId"`

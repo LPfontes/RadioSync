@@ -8,5 +8,5 @@ type Track struct {
 	Duration float64 `json:"duration"`
 	Category string  `json:"category,omitempty"`
 	Theme    string  `json:"theme,omitempty"`
+	CoverURL string  `json:"coverUrl,omitempty"`
 }
-

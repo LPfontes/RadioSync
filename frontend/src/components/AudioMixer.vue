@@ -1,44 +1,37 @@
 <template>
-  <div class="bg-zinc-850/80 backdrop-blur-md rounded-xl border border-zinc-700/60 shadow-xl overflow-hidden transition-all duration-300">
+  <div class="mixer-panel card">
     <!-- Barra Superior do Mixer -->
-    <div class="px-4 py-3 bg-gradient-to-r from-zinc-800/90 via-zinc-800/70 to-zinc-850 flex items-center justify-between">
-      <div class="flex items-center gap-2.5">
-        <div class="w-8 h-8 rounded-lg bg-emerald-500/10 border border-emerald-500/30 flex items-center justify-center text-emerald-400">
-          <Sliders class="w-4 h-4" />
+    <div class="mixer-header">
+      <div class="mixer-header-left">
+        <div class="mixer-icon-box">
+          <Sliders class="icon-md" />
         </div>
         <div>
-          <div class="flex items-center gap-2">
-            <h3 class="text-sm font-bold text-zinc-100 flex items-center gap-1.5">
-              Mixer de Efeitos & Ambiente
-            </h3>
-            <span v-if="activeChannelsCount > 0" class="text-[10px] font-semibold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 flex items-center gap-1">
-              <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span>
+          <div class="mixer-title-row">
+            <h3 class="mixer-title">Mixer de Efeitos & Ambiente</h3>
+            <span v-if="activeChannelsCount > 0" class="mixer-badge active">
+              <span class="status-dot animate-pulse"></span>
               {{ activeChannelsCount }} ativo{{ activeChannelsCount > 1 ? 's' : '' }}
             </span>
-            <span v-else class="text-[10px] px-2 py-0.5 rounded-full bg-zinc-700/60 text-zinc-400">
-              Inativo
-            </span>
+            <span v-else class="mixer-badge inactive">Inativo</span>
           </div>
-          <p class="text-[11px] text-zinc-400">
+          <p class="mixer-subtitle">
             {{ isDJ ? 'Mixe e transmita sons de fundo para toda a estação' : 'Sons de fundo mixados pela rádio' }}
           </p>
         </div>
       </div>
 
-      <div class="flex items-center gap-2">
+      <div class="mixer-header-right">
         <!-- Modo Ouvinte: Toggle de Ajustes Pessoais -->
-        <div v-if="!isDJ && store.mixer && store.mixer.length > 0" class="flex items-center gap-1.5 bg-zinc-900/70 px-2.5 py-1 rounded-lg border border-zinc-700/60 text-xs">
-          <span class="text-[11px] text-zinc-400">Ajuste Local</span>
+        <div v-if="!isDJ && store.mixer && store.mixer.length > 0" class="personal-mix-box">
+          <span class="personal-mix-label">Ajuste Local</span>
           <button
             @click="togglePersonalMix"
-            :class="personalMixEnabled ? 'bg-emerald-500 text-white' : 'bg-zinc-700 text-zinc-400'"
-            class="w-8 h-4 rounded-full transition-colors relative p-0.5"
+            :class="{ enabled: personalMixEnabled }"
+            class="switch-btn"
             title="Personalizar volumes no seu navegador sem mudar a rádio"
           >
-            <div
-              :class="personalMixEnabled ? 'translate-x-4' : 'translate-x-0'"
-              class="w-3 h-3 rounded-full bg-white transition-transform"
-            ></div>
+            <div class="switch-thumb"></div>
           </button>
         </div>
 
@@ -46,16 +39,16 @@
         <button
           v-if="isDJ"
           @click="showAddModal = true"
-          class="px-2.5 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-medium flex items-center gap-1.5 shadow-sm transition-colors"
+          class="btn btn-primary"
         >
-          <Plus class="w-3.5 h-3.5" />
+          <Plus class="icon-sm" />
           <span>Adicionar Som</span>
         </button>
 
         <!-- Botão Minimizar/Expandir -->
         <button
           @click="isExpanded = !isExpanded"
-          class="p-1.5 rounded-lg hover:bg-zinc-700/60 text-zinc-400 hover:text-zinc-200 transition-colors text-xs"
+          class="btn-icon"
           :title="isExpanded ? 'Minimizar Mixer' : 'Expandir Mixer'"
         >
           <span v-if="isExpanded">▲</span>
@@ -65,51 +58,49 @@
     </div>
 
     <!-- Conteúdo Expandido do Mixer -->
-    <div v-show="isExpanded" class="p-4 space-y-4">
+    <div v-show="isExpanded" class="mixer-body">
       <!-- Mensagem quando não há canais ativos -->
-      <div v-if="!store.mixer || store.mixer.length === 0" class="py-8 px-4 text-center border border-dashed border-zinc-700/70 rounded-xl bg-zinc-900/40">
-        <div class="w-12 h-12 mx-auto mb-3 rounded-full bg-zinc-800 flex items-center justify-center text-zinc-500">
-          <SlidersHorizontal class="w-6 h-6" />
+      <div v-if="!store.mixer || store.mixer.length === 0" class="mixer-empty">
+        <div class="mixer-empty-icon">
+          <SlidersHorizontal class="icon-xl" />
         </div>
-        <p class="text-sm text-zinc-300 font-medium">Nenhum som de fundo no mixer</p>
-        <p class="text-xs text-zinc-500 mt-1 max-w-sm mx-auto">
-          {{ isDJ 
-            ? 'Adicione sons de ambiente como chuva, cafeteria com conversas, lareira crepitante ou músicas da biblioteca para tocar simultaneamente na estação.' 
-            : 'O DJ da rádio ainda não ativou sons de fundo ou ambientação nesta estação.' 
+        <p class="mixer-empty-title">Nenhum som de fundo no mixer</p>
+        <p class="mixer-empty-desc">
+          {{ isDJ
+            ? 'Adicione sons de ambiente como chuva, cafeteria com conversas, lareira crepitante ou músicas da biblioteca para tocar simultaneamente na estação.'
+            : 'O DJ da rádio ainda não ativou sons de fundo ou ambientação nesta estação.'
           }}
         </p>
-        <div v-if="isDJ" class="mt-4 flex flex-wrap justify-center gap-2">
+        <div v-if="isDJ" class="quick-presets-row">
           <button
             v-for="preset in quickPresets"
             :key="preset.key"
             @click="addPresetChannel(preset)"
-            class="px-3 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 text-xs text-zinc-200 flex items-center gap-1.5 transition-all hover:scale-105"
+            class="quick-preset-btn"
           >
-            <component :is="getPresetIcon(preset.key)" class="w-3.5 h-3.5 text-emerald-400" />
+            <component :is="getPresetIcon(preset.key)" class="icon-sm text-emerald" />
             <span>+ {{ preset.name }}</span>
           </button>
         </div>
       </div>
 
       <!-- Grade de Canais de Som -->
-      <div v-else class="space-y-3">
+      <div v-else class="mixer-channels-section">
         <!-- Barra de Ações Rápidas (DJ) -->
-        <div v-if="isDJ" class="flex items-center justify-between pb-2 border-b border-zinc-800 text-xs">
-          <span class="text-zinc-400 font-medium flex items-center gap-1.5">
-            Canais Sincronizados na Rádio:
-          </span>
-          <div class="flex items-center gap-2">
+        <div v-if="isDJ" class="mixer-toolbar">
+          <span class="mixer-toolbar-label">Canais Sincronizados na Rádio:</span>
+          <div class="mixer-toolbar-actions">
             <button
               @click="muteAllChannels"
-              class="text-zinc-400 hover:text-amber-400 transition-colors"
+              class="toolbar-link amber-hover"
               title="Alternar mudo em todos os canais de fundo"
             >
               {{ areAllMuted ? 'Desmutar Todos' : 'Mutar Todos' }}
             </button>
-            <span class="text-zinc-600">|</span>
+            <span class="toolbar-sep">|</span>
             <button
               @click="clearMixer"
-              class="text-zinc-400 hover:text-red-400 transition-colors"
+              class="toolbar-link red-hover"
               title="Remover todos os canais de efeitos"
             >
               Limpar Mixer
@@ -117,105 +108,85 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <div class="channels-grid">
           <!-- Card de Canal Individual -->
           <div
             v-for="ch in store.mixer"
             :key="ch.id"
-            class="bg-zinc-900/80 border rounded-xl p-3.5 transition-all duration-200"
-            :class="ch.isPlaying && !ch.muted ? 'border-zinc-700 shadow-lg' : 'border-zinc-800/80 opacity-70'"
+            class="channel-card"
+            :class="ch.isPlaying && !ch.muted ? 'active' : 'muted'"
           >
             <!-- Topo do Canal: Ícone, Nome, VU animado e Ações -->
-            <div class="flex items-center justify-between mb-2.5">
-              <div class="flex items-center gap-2.5 min-w-0">
+            <div class="channel-top">
+              <div class="channel-info-row">
                 <div
-                  class="w-7 h-7 rounded-lg flex items-center justify-center shrink-0 border"
-                  :class="ch.isPlaying && !ch.muted ? 'bg-emerald-500/10 border-emerald-500/30 text-emerald-400' : 'bg-zinc-800 border-zinc-700 text-zinc-500'"
+                  class="channel-icon"
+                  :class="ch.isPlaying && !ch.muted ? 'active' : 'inactive'"
                 >
-                  <component :is="getChannelIcon(ch)" class="w-3.5 h-3.5" />
+                  <component :is="getChannelIcon(ch)" class="icon-sm" />
                 </div>
-                <div class="min-w-0">
-                  <div class="flex items-center gap-1.5">
-                    <span class="text-xs font-semibold text-zinc-100 truncate block">
-                      {{ ch.name }}
-                    </span>
-                    <span v-if="ch.type === 'preset'" class="text-[9px] px-1.5 py-0.2 rounded bg-zinc-800 text-zinc-400 border border-zinc-700/60 uppercase tracking-wider font-mono">
-                      Ambiente
-                    </span>
-                    <span v-else class="text-[9px] px-1.5 py-0.2 rounded bg-purple-900/40 text-purple-300 border border-purple-700/40 uppercase tracking-wider font-mono">
-                      Faixa
-                    </span>
+                <div class="channel-meta">
+                  <div class="channel-name-row">
+                    <span class="channel-name truncate">{{ ch.name }}</span>
+                    <span v-if="ch.type === 'preset'" class="channel-tag preset">Ambiente</span>
+                    <span v-else class="channel-tag track">Faixa</span>
                     <button
                       v-if="isDJ"
                       @click="toggleChannelLoop(ch)"
                       type="button"
-                      class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider transition-all hover:scale-105 active:scale-95 cursor-pointer select-none"
-                      :class="ch.loop ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/30 hover:bg-zinc-700' : 'bg-amber-950/40 text-amber-300 border border-amber-700/40 hover:bg-amber-900/50'"
+                      class="loop-pill clickable"
+                      :class="ch.loop ? 'loop-on' : 'loop-once'"
                       :title="ch.loop ? 'Modo: Repetir em Loop (clique para tocar 1 vez)' : 'Modo: Tocar 1 vez (clique para repetir em loop)'"
                     >
                       {{ ch.loop ? 'Loop' : '1x' }}
                     </button>
                     <span
                       v-else
-                      class="text-[9px] px-1.5 py-0.5 rounded font-mono uppercase tracking-wider"
-                      :class="ch.loop ? 'bg-zinc-800 text-emerald-400 border border-emerald-500/20' : 'bg-amber-950/40 text-amber-300 border border-amber-700/40'"
+                      class="loop-pill"
+                      :class="ch.loop ? 'loop-on' : 'loop-once'"
                     >
                       {{ ch.loop ? 'Loop' : '1x' }}
                     </span>
                   </div>
-                  <span class="text-[10px] text-zinc-500 block truncate">
+                  <span class="channel-desc truncate">
                     {{ ch.type === 'preset' ? getPresetDescription(ch.presetKey) : 'Faixa da biblioteca' }}
                   </span>
                 </div>
               </div>
 
               <!-- VU Meter Visual Animado -->
-              <div class="flex items-end gap-0.5 h-4 px-2 py-0.5 bg-zinc-950/60 rounded border border-zinc-800/80 shrink-0">
-                <span
-                  class="w-1 rounded-sm bg-emerald-500 transition-all duration-150"
-                  :style="{ height: getVuHeight(ch, 1) }"
-                ></span>
-                <span
-                  class="w-1 rounded-sm bg-emerald-400 transition-all duration-150"
-                  :style="{ height: getVuHeight(ch, 2) }"
-                ></span>
-                <span
-                  class="w-1 rounded-sm bg-amber-400 transition-all duration-150"
-                  :style="{ height: getVuHeight(ch, 3) }"
-                ></span>
-                <span
-                  class="w-1 rounded-sm bg-red-400 transition-all duration-150"
-                  :style="{ height: getVuHeight(ch, 4) }"
-                ></span>
+              <div class="vu-meter">
+                <span class="vu-bar vu-1" :style="{ height: getVuHeight(ch, 1) }"></span>
+                <span class="vu-bar vu-2" :style="{ height: getVuHeight(ch, 2) }"></span>
+                <span class="vu-bar vu-3" :style="{ height: getVuHeight(ch, 3) }"></span>
+                <span class="vu-bar vu-4" :style="{ height: getVuHeight(ch, 4) }"></span>
               </div>
             </div>
 
             <!-- Fader / Slider de Volume -->
-            <div class="space-y-1.5">
-              <div class="flex items-center justify-between text-[11px]">
-                <div class="flex items-center gap-1 text-zinc-400">
+            <div class="channel-fader-area">
+              <div class="fader-label-row">
+                <div class="fader-mute-group">
                   <button
                     v-if="isDJ"
                     @click="toggleChannelMute(ch)"
-                    class="hover:text-zinc-200 transition-colors p-0.5"
+                    class="mute-icon-btn"
                     :title="ch.muted ? 'Desmutar' : 'Silenciar'"
                   >
-                    <VolumeX v-if="ch.muted || getEffectiveVolume(ch) === 0" class="w-3.5 h-3.5 text-red-400" />
-                    <Volume2 v-else class="w-3.5 h-3.5 text-zinc-400" />
+                    <VolumeX v-if="ch.muted || getEffectiveVolume(ch) === 0" class="icon-sm text-red" />
+                    <Volume2 v-else class="icon-sm" />
                   </button>
-                  <Volume2 v-else class="w-3.5 h-3.5 text-zinc-400" />
+                  <Volume2 v-else class="icon-sm" />
                   <span>Volume:</span>
                 </div>
-                <div class="font-mono text-zinc-200 font-medium">
+                <div class="fader-value">
                   {{ Math.round(getEffectiveVolume(ch) * 100) }}%
-                  <span v-if="!isDJ && personalMixEnabled" class="text-[10px] text-emerald-400 ml-1">
-                    (local)
-                  </span>
+                  <span v-if="!isDJ && personalMixEnabled" class="local-indicator">(local)</span>
                 </div>
               </div>
 
               <!-- Slider do DJ (ou do Ouvinte com Ajuste Local) -->
-              <div class="flex items-center gap-2">
+              <div class="fader-controls-row">
                 <input
                   type="range"
                   min="0"
@@ -223,34 +194,34 @@
                   :value="Math.round(getEffectiveVolume(ch) * 100)"
                   @input="handleVolumeChange(ch, $event.target.value)"
                   :disabled="!isDJ && !personalMixEnabled"
-                  class="flex-1 h-1.5 appearance-none bg-zinc-800 rounded-full cursor-pointer accent-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed [&::-webkit-slider-thumb]:appearance-none [&::-webkit-slider-thumb]:w-3 [&::-webkit-slider-thumb]:h-3 [&::-webkit-slider-thumb]:rounded-full [&::-webkit-slider-thumb]:bg-emerald-400"
+                  class="range-slider channel-slider"
                 />
 
                 <!-- Controles do DJ: Loop/1x, Play/Pause e Deletar -->
-                <div v-if="isDJ" class="flex items-center gap-1">
+                <div v-if="isDJ" class="channel-actions">
                   <button
                     @click="toggleChannelLoop(ch)"
-                    class="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 transition-colors"
-                    :class="ch.loop ? 'text-emerald-400' : 'text-amber-400'"
+                    class="channel-action-btn"
+                    :class="ch.loop ? 'text-emerald' : 'text-amber'"
                     :title="ch.loop ? 'Modo: Repetir infinitamente (clique para tocar 1 vez)' : 'Modo: Tocar 1 vez (clique para repetir infinitamente)'"
                   >
-                    <Repeat v-if="ch.loop" class="w-3 h-3" />
-                    <Repeat1 v-else class="w-3 h-3" />
+                    <Repeat v-if="ch.loop" class="icon-xs" />
+                    <Repeat1 v-else class="icon-xs" />
                   </button>
                   <button
                     @click="toggleChannelPlay(ch)"
-                    class="p-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors"
+                    class="channel-action-btn"
                     :title="ch.isPlaying ? 'Pausar som' : 'Tocar som'"
                   >
-                    <Pause v-if="ch.isPlaying" class="w-3 h-3 text-emerald-400" />
-                    <Play v-else class="w-3 h-3 text-zinc-400" />
+                    <Pause v-if="ch.isPlaying" class="icon-xs text-emerald" />
+                    <Play v-else class="icon-xs" />
                   </button>
                   <button
                     @click="removeChannel(ch.id)"
-                    class="p-1.5 rounded-lg bg-zinc-800 hover:bg-red-950/40 text-zinc-500 hover:text-red-400 transition-colors"
+                    class="channel-action-btn delete"
                     title="Remover canal"
                   >
-                    <Trash2 class="w-3 h-3" />
+                    <Trash2 class="icon-xs" />
                   </button>
                 </div>
               </div>
@@ -262,114 +233,110 @@
 
     <!-- Modal para Adicionar Som / Camada ao Mixer (Apenas DJ) -->
     <Teleport to="body">
-      <div v-if="showAddModal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-        <div class="bg-zinc-900 border border-zinc-700 rounded-2xl max-w-lg w-full max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
+      <div v-if="showAddModal" class="modal-overlay">
+        <div class="mixer-modal">
           <!-- Cabeçalho do Modal -->
-          <div class="px-5 py-4 border-b border-zinc-800 flex items-center justify-between bg-zinc-850">
-            <div class="flex items-center gap-2">
-              <Plus class="w-4 h-4 text-emerald-400" />
-              <h3 class="text-sm font-bold text-zinc-100">Adicionar Som ao Mixer</h3>
+          <div class="mixer-modal-header">
+            <div class="modal-title">
+              <Plus class="icon-md text-emerald" />
+              <h3>Adicionar Som ao Mixer</h3>
             </div>
-            <button @click="showAddModal = false" class="text-zinc-400 hover:text-zinc-200 p-1 rounded-lg hover:bg-zinc-800">
-              <X class="w-4 h-4" />
+            <button @click="showAddModal = false" class="btn-icon">
+              <X class="icon-md" />
             </button>
           </div>
 
           <!-- Abas do Modal: Presets de Ambiente vs Faixas da Biblioteca -->
-          <div class="px-5 pt-3 pb-2 border-b border-zinc-800 flex gap-2">
+          <div class="mixer-modal-tabs">
             <button
               @click="modalTab = 'presets'"
-              :class="modalTab === 'presets' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              :class="{ active: modalTab === 'presets' }"
+              class="tab-btn"
             >
-              <Sparkles class="w-3.5 h-3.5" />
+              <Sparkles class="icon-sm" />
               Sons de Ambiente (Presets)
             </button>
             <button
               @click="modalTab = 'library'"
-              :class="modalTab === 'library' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-800'"
-              class="px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5"
+              :class="{ active: modalTab === 'library' }"
+              class="tab-btn"
             >
-              <Music class="w-3.5 h-3.5" />
+              <Music class="icon-sm" />
               Biblioteca da Rádio
             </button>
           </div>
 
           <!-- Corpo do Modal -->
-          <div class="flex-1 overflow-y-auto p-5 space-y-4">
+          <div class="mixer-modal-body">
             <!-- Aba 1: Presets Prontos -->
-            <div v-if="modalTab === 'presets'" class="space-y-3">
+            <div v-if="modalTab === 'presets'" class="presets-tab-content">
               <!-- Filtro de Categorias de Sons -->
-              <div class="flex gap-1.5 overflow-x-auto pb-1 text-xs border-b border-zinc-800">
+              <div class="category-pills">
                 <button
                   v-for="cat in categories"
                   :key="cat"
                   @click="selectedCategory = cat"
-                  :class="selectedCategory === cat ? 'bg-zinc-750 text-emerald-400 font-semibold border border-emerald-500/30' : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800'"
-                  class="px-2.5 py-1 rounded-lg transition-colors shrink-0"
+                  :class="{ selected: selectedCategory === cat }"
+                  class="category-pill"
                 >
                   {{ cat }}
                 </button>
               </div>
 
-              <div class="grid grid-cols-2 gap-2.5">
+              <div class="presets-grid">
                 <button
                   v-for="preset in filteredPresets"
                   :key="preset.key"
                   @click="addPresetChannel(preset)"
                   :disabled="isPresetActive(preset.key)"
-                  :class="isPresetActive(preset.key) ? 'opacity-40 border-zinc-800 cursor-not-allowed bg-zinc-900' : 'hover:border-emerald-500/60 hover:bg-zinc-800/80 border-zinc-800 bg-zinc-850/80'"
-                  class="p-3 rounded-xl border text-left transition-all group flex flex-col justify-between"
+                  :class="{ 'is-active': isPresetActive(preset.key) }"
+                  class="preset-card"
                 >
                   <div>
-                    <div class="flex items-center justify-between mb-1.5">
-                      <div class="w-7 h-7 rounded-lg bg-zinc-800 group-hover:bg-emerald-500/20 text-emerald-400 flex items-center justify-center transition-colors">
-                        <component :is="getPresetIcon(preset.key)" class="w-4 h-4" />
+                    <div class="preset-card-top">
+                      <div class="preset-card-icon">
+                        <component :is="getPresetIcon(preset.key)" class="icon-md" />
                       </div>
-                      <span v-if="isPresetActive(preset.key)" class="text-[10px] text-emerald-400 font-medium">
+                      <span v-if="isPresetActive(preset.key)" class="preset-active-label">
                         Já ativo
                       </span>
-                      <Plus v-else class="w-4 h-4 text-zinc-500 group-hover:text-emerald-400 transition-colors" />
+                      <Plus v-else class="icon-md preset-plus-icon" />
                     </div>
-                    <div class="text-xs font-bold text-zinc-200 group-hover:text-emerald-300 transition-colors">
-                      {{ preset.name }}
-                    </div>
-                    <div class="text-[10px] text-zinc-400 mt-0.5 line-clamp-2">
-                      {{ preset.description }}
-                    </div>
+                    <div class="preset-card-name">{{ preset.name }}</div>
+                    <div class="preset-card-desc">{{ preset.description }}</div>
                   </div>
                 </button>
               </div>
             </div>
 
             <!-- Aba 2: Faixas da Biblioteca da Rádio -->
-            <div v-else class="space-y-3">
-              <div class="relative">
-                <Search class="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-500" />
+            <div v-else class="library-tab-content">
+              <div class="search-wrapper">
+                <Search class="icon-sm search-icon" />
                 <input
                   v-model="librarySearch"
                   placeholder="Buscar faixa pelo título..."
-                  class="w-full bg-zinc-800 border border-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-xs text-zinc-200 outline-none focus:border-emerald-500"
+                  class="search-input"
                 />
               </div>
 
-              <div v-if="filteredLibraryTracks.length === 0" class="text-center py-8 text-xs text-zinc-500">
+              <div v-if="filteredLibraryTracks.length === 0" class="empty-state">
                 Nenhuma faixa encontrada no catálogo da rádio.
               </div>
 
-              <div v-else class="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+              <div v-else class="modal-tracks-list">
                 <div
                   v-for="track in filteredLibraryTracks"
                   :key="track.id"
-                  class="p-2.5 rounded-lg bg-zinc-850 border border-zinc-800 hover:border-zinc-700 flex items-center justify-between gap-3 transition-colors"
+                  class="modal-track-item"
                 >
-                  <div class="min-w-0 flex items-center gap-2">
-                    <Music class="w-3.5 h-3.5 text-purple-400 shrink-0" />
-                    <span class="text-xs text-zinc-200 truncate font-medium">{{ track.title }}</span>
+                  <div class="modal-track-info">
+                    <Music class="icon-sm icon-purple" />
+                    <span class="modal-track-title truncate">{{ track.title }}</span>
                   </div>
                   <button
                     @click="addTrackChannel(track)"
-                    class="px-2.5 py-1 rounded bg-purple-600 hover:bg-purple-500 text-white text-[11px] font-medium transition-colors shrink-0"
+                    class="btn btn-purple btn-sm"
                   >
                     Adicionar
                   </button>
@@ -378,11 +345,8 @@
             </div>
           </div>
 
-          <div class="px-5 py-3 border-t border-zinc-800 bg-zinc-850 flex justify-end">
-            <button
-              @click="showAddModal = false"
-              class="px-4 py-1.5 rounded-lg bg-zinc-800 hover:bg-zinc-700 text-zinc-300 text-xs font-medium transition-colors"
-            >
+          <div class="mixer-modal-footer">
+            <button @click="showAddModal = false" class="btn btn-secondary">
               Fechar
             </button>
           </div>
@@ -477,7 +441,6 @@ const filteredLibraryTracks = computed(() => {
   return list.filter(t => t.title && t.title.toLowerCase().includes(query))
 })
 
-// Mapeia ícones Lucide para presets
 const iconMap = {
   rain: CloudRain,
   thunder: CloudLightning,
@@ -526,7 +489,6 @@ function getEffectiveVolume(ch) {
 function getVuHeight(ch, barIndex) {
   if (!ch.isPlaying || ch.muted) return '2px'
   const vol = getEffectiveVolume(ch)
-  // Simula animação pulsante realista
   const tick = vuTick.value + barIndex * 1.5
   const wave = (Math.sin(tick) + 1) / 2
   const minH = 3
@@ -566,8 +528,6 @@ onUnmounted(() => {
   if (vuInterval) clearInterval(vuInterval)
 })
 
-// --- AÇÕES DO DJ ---
-
 function addPresetChannel(preset) {
   if (!isDJ.value) return
   const current = store.mixer ? [...store.mixer] : []
@@ -585,7 +545,7 @@ function addPresetChannel(preset) {
     volume: preset.defaultVolume || 0.4,
     isPlaying: true,
     muted: false,
-    loop: preset.loop === true, // Padrão: 1 vez (false)
+    loop: preset.loop === true,
   }
 
   current.push(newChannel)
@@ -605,7 +565,7 @@ function addTrackChannel(track) {
     volume: 0.35,
     isPlaying: true,
     muted: false,
-    loop: false, // Padrão: 1 vez (false)
+    loop: false,
   }
 
   current.push(newChannel)
@@ -678,7 +638,6 @@ function handleVolumeChange(ch, newVolumeInt) {
     })
     emitMixerUpdate(current)
   } else if (personalMixEnabled.value) {
-    // Ajuste local do ouvinte
     localVolumeMap.value.set(ch.id, vol)
     ambientAudio.setLocalMultiplier(ch.id, vol / (ch.volume || 0.001))
     syncAudio()
@@ -689,8 +648,7 @@ function togglePersonalMix() {
   personalMixEnabled.value = !personalMixEnabled.value
   ambientAudio.setPersonalMixEnabled(personalMixEnabled.value)
   if (personalMixEnabled.value) {
-    // Inicializa os volumes locais com os volumes atuais do DJ
-    (store.mixer || []).forEach(ch => {
+    ;(store.mixer || []).forEach(ch => {
       if (!localVolumeMap.value.has(ch.id)) {
         localVolumeMap.value.set(ch.id, ch.volume || 0.4)
       }
@@ -705,3 +663,674 @@ function emitMixerUpdate(channels) {
   emit('updateMixer', channels)
 }
 </script>
+
+<style scoped>
+.mixer-panel {
+
+  overflow: hidden;
+  transition: all 0.3s ease;
+}
+
+.mixer-header {
+  padding: 0.75rem 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-wrap: wrap;
+}
+
+.mixer-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+}
+
+.mixer-icon-box {
+  width: 2rem;
+  height: 2rem;
+  border-radius: var(--radius-lg);
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--emerald-400);
+}
+
+.mixer-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.mixer-title {
+  font-size: 0.875rem;
+  font-weight: 700;
+  color: var(--zinc-100);
+}
+
+.mixer-badge {
+  font-size: 0.625rem;
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.mixer-badge.active {
+  font-weight: 600;
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--emerald-300);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.mixer-badge.inactive {
+  background-color: rgba(63, 63, 70, 0.6);
+  color: var(--zinc-400);
+}
+
+.mixer-subtitle {
+  font-size: 0.6875rem;
+  color: var(--zinc-400);
+}
+
+.mixer-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.personal-mix-box {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  background-color: rgba(24, 24, 27, 0.7);
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(63, 63, 70, 0.6);
+}
+
+.personal-mix-label {
+  font-size: 0.6875rem;
+  color: var(--zinc-400);
+}
+
+.switch-btn {
+  width: 2rem;
+  height: 1rem;
+  border-radius: var(--radius-full);
+  background-color: var(--zinc-700);
+  position: relative;
+  padding: 0.125rem;
+  transition: background-color 0.2s ease;
+}
+
+.switch-btn.enabled {
+  background-color: var(--emerald-500);
+}
+
+.switch-thumb {
+  width: 0.75rem;
+  height: 0.75rem;
+  border-radius: var(--radius-full);
+  background-color: #ffffff;
+  transition: transform 0.2s ease;
+  transform: translateX(0);
+}
+
+.switch-btn.enabled .switch-thumb {
+  transform: translateX(1rem);
+}
+
+.mixer-empty {
+  padding: 1rem 1rem;
+  text-align: center;
+}
+
+.mixer-empty-icon {
+  width: 3rem;
+  height: 3rem;
+  margin: 0 auto 0.75rem;
+  border-radius: var(--radius-full);
+  background-color: var(--zinc-800);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--zinc-500);
+}
+
+.mixer-empty-title {
+  font-size: 0.875rem;
+  color: var(--zinc-300);
+  font-weight: 500;
+}
+
+.mixer-empty-desc {
+  font-size: 0.75rem;
+  color: var(--zinc-500);
+  margin: 0.25rem auto 0;
+  max-width: 24rem;
+}
+
+.quick-presets-row {
+  margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.quick-preset-btn {
+  padding: 0.375rem 0.75rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--zinc-800);
+  border: 1px solid var(--zinc-700);
+  font-size: 0.75rem;
+  color: var(--zinc-200);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.quick-preset-btn:hover {
+  background-color: var(--zinc-700);
+  transform: scale(1.04);
+}
+
+.mixer-channels-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.mixer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-bottom: 0.5rem;
+  border-bottom: 1px solid var(--zinc-800);
+  font-size: 0.75rem;
+}
+
+.mixer-toolbar-label {
+  color: var(--zinc-400);
+  font-weight: 500;
+}
+
+.mixer-toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.toolbar-link {
+  color: var(--zinc-400);
+  transition: color 0.15s ease;
+}
+
+.toolbar-link.amber-hover:hover {
+  color: var(--amber-400);
+}
+
+.toolbar-link.red-hover:hover {
+  color: var(--red-400);
+}
+
+.toolbar-sep {
+  color: var(--zinc-600);
+}
+
+.channels-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.channel-card {
+  background-color: rgba(24, 24, 27, 0.85);
+  border: 1px solid var(--zinc-800);
+  border-radius: var(--radius-xl);
+  padding: 0.875rem;
+  transition: all 0.2s ease;
+}
+
+.channel-card.active {
+  border-color: var(--zinc-700);
+  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.25);
+}
+
+.channel-card.muted {
+  opacity: 0.7;
+}
+
+.channel-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.625rem;
+  gap: 0.5rem;
+}
+
+.channel-info-row {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  min-width: 0;
+}
+
+.channel-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-lg);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border: 1px solid var(--zinc-700);
+}
+
+.channel-icon.active {
+  background-color: rgba(16, 185, 129, 0.1);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: var(--emerald-400);
+}
+
+.channel-icon.inactive {
+  background-color: var(--zinc-800);
+  color: var(--zinc-500);
+}
+
+.channel-meta {
+  min-width: 0;
+}
+
+.channel-name-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex-wrap: wrap;
+}
+
+.channel-name {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--zinc-100);
+}
+
+.channel-tag {
+  font-size: 0.5625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--radius-sm);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-family: var(--font-mono);
+}
+
+.channel-tag.preset {
+  background-color: var(--zinc-800);
+  color: var(--zinc-400);
+  border: 1px solid rgba(63, 63, 70, 0.6);
+}
+
+.channel-tag.track {
+  background-color: rgba(88, 28, 135, 0.4);
+  color: var(--purple-300);
+  border: 1px solid rgba(126, 34, 206, 0.4);
+}
+
+.loop-pill {
+  font-size: 0.5625rem;
+  padding: 0.125rem 0.375rem;
+  border-radius: var(--radius-sm);
+  font-family: var(--font-mono);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.loop-pill.clickable {
+  cursor: pointer;
+  user-select: none;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.loop-pill.clickable:hover {
+  transform: scale(1.05);
+}
+
+.loop-pill.loop-on {
+  background-color: var(--zinc-800);
+  color: var(--emerald-400);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.loop-pill.loop-once {
+  background-color: rgba(69, 26, 3, 0.4);
+  color: var(--amber-300);
+  border: 1px solid rgba(180, 83, 9, 0.4);
+}
+
+.channel-desc {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+  display: block;
+}
+
+/* VU Meter */
+.vu-meter {
+  display: flex;
+  align-items: flex-end;
+  gap: 0.125rem;
+  height: 1rem;
+  padding: 0.125rem 0.5rem;
+  background-color: rgba(9, 9, 11, 0.6);
+  border-radius: var(--radius-sm);
+  border: 1px solid rgba(39, 39, 42, 0.8);
+  flex-shrink: 0;
+}
+
+.vu-bar {
+  width: 0.25rem;
+  border-radius: 1px;
+  transition: height 0.15s ease;
+}
+
+.vu-1 { background-color: var(--emerald-500); }
+.vu-2 { background-color: var(--emerald-400); }
+.vu-3 { background-color: var(--amber-400); }
+.vu-4 { background-color: var(--red-400); }
+
+/* Fader */
+.channel-fader-area {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.fader-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.6875rem;
+}
+
+.fader-mute-group {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  color: var(--zinc-400);
+}
+
+.mute-icon-btn {
+  padding: 0.125rem;
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+}
+
+.mute-icon-btn:hover {
+  color: var(--zinc-200);
+}
+
+.fader-value {
+  font-family: var(--font-mono);
+  color: var(--zinc-200);
+  font-weight: 500;
+}
+
+.local-indicator {
+  font-size: 0.625rem;
+  color: var(--emerald-400);
+  margin-left: 0.25rem;
+}
+
+.fader-controls-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.channel-slider {
+  flex: 1;
+  background-color: var(--zinc-800);
+}
+
+.channel-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.channel-action-btn {
+  padding: 0.375rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--zinc-800);
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.channel-action-btn:hover {
+  background-color: var(--zinc-700);
+  color: #ffffff;
+}
+
+.channel-action-btn.delete:hover {
+  background-color: rgba(69, 10, 10, 0.5);
+  color: var(--red-400);
+}
+
+/* Mixer Modal */
+.mixer-modal {
+  background-color: var(--zinc-900);
+  border: 1px solid var(--zinc-700);
+  border-radius: var(--radius-2xl);
+  max-width: 32rem;
+  width: 100%;
+  max-height: 90vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
+  overflow: hidden;
+}
+
+.mixer-modal-header {
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--zinc-800);
+  background-color: var(--zinc-850);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.mixer-modal-tabs {
+  padding: 0.75rem 1.25rem 0.5rem;
+  border-bottom: 1px solid var(--zinc-800);
+  display: flex;
+  gap: 0.5rem;
+}
+
+.mixer-modal-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1.25rem;
+}
+
+.presets-tab-content,
+.library-tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.category-pills {
+  display: flex;
+  gap: 0.375rem;
+  overflow-x: auto;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--zinc-800);
+}
+
+.category-pill {
+  padding: 0.25rem 0.625rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.75rem;
+  color: var(--zinc-400);
+  flex-shrink: 0;
+  border: 1px solid transparent;
+  transition: all 0.15s ease;
+}
+
+.category-pill:hover {
+  color: var(--zinc-200);
+  background-color: var(--zinc-800);
+}
+
+.category-pill.selected {
+  background-color: var(--zinc-750);
+  color: var(--emerald-400);
+  font-weight: 600;
+  border-color: rgba(16, 185, 129, 0.3);
+}
+
+.presets-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.625rem;
+}
+
+.preset-card {
+  padding: 0.75rem;
+  border-radius: var(--radius-xl);
+  border: 1px solid var(--zinc-800);
+  background-color: rgba(31, 31, 35, 0.8);
+  text-align: left;
+  transition: all 0.15s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.preset-card:hover:not(:disabled) {
+  border-color: rgba(16, 185, 129, 0.6);
+  background-color: rgba(39, 39, 42, 0.8);
+}
+
+.preset-card.is-active {
+  opacity: 0.4;
+  background-color: var(--zinc-900);
+}
+
+.preset-card-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.375rem;
+}
+
+.preset-card-icon {
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--zinc-800);
+  color: var(--emerald-400);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease;
+}
+
+.preset-card:hover:not(:disabled) .preset-card-icon {
+  background-color: rgba(16, 185, 129, 0.2);
+}
+
+.preset-active-label {
+  font-size: 0.625rem;
+  color: var(--emerald-400);
+  font-weight: 500;
+}
+
+.preset-plus-icon {
+  color: var(--zinc-500);
+  transition: color 0.15s ease;
+}
+
+.preset-card:hover:not(:disabled) .preset-plus-icon {
+  color: var(--emerald-400);
+}
+
+.preset-card-name {
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: var(--zinc-200);
+  transition: color 0.15s ease;
+}
+
+.preset-card:hover:not(:disabled) .preset-card-name {
+  color: var(--emerald-300);
+}
+
+.preset-card-desc {
+  font-size: 0.625rem;
+  color: var(--zinc-400);
+  margin-top: 0.125rem;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.modal-tracks-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.modal-track-item {
+  padding: 0.625rem;
+  border-radius: var(--radius-lg);
+  background-color: var(--zinc-850);
+  border: 1px solid var(--zinc-800);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  transition: border-color 0.15s ease;
+}
+
+.modal-track-item:hover {
+  border-color: var(--zinc-700);
+}
+
+.modal-track-info {
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.icon-purple {
+  color: var(--purple-400);
+}
+
+.modal-track-title {
+  font-size: 0.75rem;
+  color: var(--zinc-200);
+  font-weight: 500;
+}
+
+.mixer-modal-footer {
+  padding: 0.75rem 1.25rem;
+  border-top: 1px solid var(--zinc-800);
+  background-color: var(--zinc-850);
+  display: flex;
+  justify-content: flex-end;
+}
+</style>

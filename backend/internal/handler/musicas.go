@@ -164,6 +164,7 @@ type UpdateTrackRequest struct {
 	Title    string `json:"title"`
 	Category string `json:"category"`
 	Theme    string `json:"theme"`
+	CoverURL string `json:"coverUrl"`
 }
 
 func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
@@ -202,6 +203,9 @@ func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
 			}
 			station.Repository[i].Category = strings.TrimSpace(req.Category)
 			station.Repository[i].Theme = strings.TrimSpace(req.Theme)
+			if req.CoverURL != "" {
+				station.Repository[i].CoverURL = strings.TrimSpace(req.CoverURL)
+			}
 			updatedTrack = station.Repository[i]
 			found = true
 			break
@@ -219,6 +223,7 @@ func UpdateTrackMetadata(w http.ResponseWriter, r *http.Request) {
 			station.Playlist[i].Title = updatedTrack.Title
 			station.Playlist[i].Category = updatedTrack.Category
 			station.Playlist[i].Theme = updatedTrack.Theme
+			station.Playlist[i].CoverURL = updatedTrack.CoverURL
 		}
 	}
 	station.Unlock()

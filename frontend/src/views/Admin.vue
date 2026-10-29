@@ -1,112 +1,149 @@
 <template>
-  <div class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col pb-24">
+  <div class="app-page admin-page">
     <!-- Header -->
-    <header class="border-b border-zinc-800 px-4 py-3 bg-zinc-900/80 backdrop-blur sticky top-0 z-10">
-      <div class="max-w-6xl mx-auto flex items-center justify-between">
-        <div class="flex items-center gap-3">
-          <Shield class="w-6 h-6 text-emerald-500" />
-          <span class="font-bold text-lg">RadioSync — Painel de Administração</span>
+    <header class="app-header app-header-sticky">
+      <div class="header-inner header-inner-lg">
+        <div class="header-brand">
+          <Shield class="icon-xl text-emerald" />
+          <span class="admin-brand-title">RadioSync — Painel de Administração</span>
         </div>
-        <div class="flex items-center gap-2">
-          <router-link to="/" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium transition-colors">
+        <div class="header-actions">
+          <router-link to="/" class="btn btn-secondary">
             Voltar ao Início
           </router-link>
         </div>
       </div>
     </header>
 
-    <div class="flex-1 max-w-6xl w-full mx-auto p-4 space-y-6">
+    <div class="admin-main">
       <!-- Notificação / Mensagem de Alerta -->
-      <div v-if="actionMessage" class="bg-emerald-600/20 border border-emerald-500/30 text-emerald-300 px-4 py-3 rounded-lg text-sm flex items-center justify-between">
+      <div v-if="actionMessage" class="alert-banner">
         <span>{{ actionMessage }}</span>
-        <button @click="actionMessage = ''" class="text-xs text-zinc-400 hover:text-white">Fechar</button>
+        <button @click="actionMessage = ''" class="btn-text">Fechar</button>
       </div>
 
       <!-- Métricas / Dashboard Stats -->
-      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-        <div class="bg-zinc-800 rounded-xl p-4 border border-zinc-700/50">
-          <div class="flex items-center justify-between text-zinc-400 mb-2">
-            <span class="text-xs font-medium">Estações Ativas</span>
-            <Radio class="w-4 h-4 text-emerald-400" />
+      <div class="stats-grid">
+        <div class="card-bordered">
+          <div class="stat-top">
+            <span class="stat-label">Estações Ativas</span>
+            <Radio class="icon-md text-emerald" />
           </div>
-          <p class="text-2xl font-bold font-mono">{{ stats.totalStations }}</p>
+          <p class="stat-value">{{ stats.totalStations }}</p>
         </div>
 
-        <div class="bg-zinc-800 rounded-xl p-4 border border-zinc-700/50">
-          <div class="flex items-center justify-between text-zinc-400 mb-2">
-            <span class="text-xs font-medium">Total de Músicas no Servidor</span>
-            <Music class="w-4 h-4 text-blue-400" />
+        <div class="card-bordered">
+          <div class="stat-top">
+            <span class="stat-label">Total de Músicas no Servidor</span>
+            <Music class="icon-md icon-blue" />
           </div>
-          <p class="text-2xl font-bold font-mono">{{ globalTracks.length || stats.totalTracks }}</p>
+          <p class="stat-value">{{ globalTracks.length || stats.totalTracks }}</p>
         </div>
 
-        <div class="bg-zinc-800 rounded-xl p-4 border" :class="stats.totalMissingFiles > 0 ? 'border-amber-500/50 bg-amber-950/10' : 'border-zinc-700/50'">
-          <div class="flex items-center justify-between text-zinc-400 mb-2">
-            <span class="text-xs font-medium">Músicas Ausentes no Disco</span>
-            <AlertTriangle class="w-4 h-4" :class="stats.totalMissingFiles > 0 ? 'text-amber-400' : 'text-zinc-500'" />
+        <div
+          class="card-bordered"
+          :class="{ 'stat-warning': stats.totalMissingFiles > 0 }"
+        >
+          <div class="stat-top">
+            <span class="stat-label">Músicas Ausentes no Disco</span>
+            <AlertTriangle
+              class="icon-md"
+              :class="stats.totalMissingFiles > 0 ? 'text-amber' : 'text-muted'"
+            />
           </div>
-          <p class="text-2xl font-bold font-mono" :class="stats.totalMissingFiles > 0 ? 'text-amber-400' : 'text-zinc-100'">
+          <p
+            class="stat-value"
+            :class="{ 'text-amber': stats.totalMissingFiles > 0 }"
+          >
             {{ stats.totalMissingFiles }}
           </p>
         </div>
 
-        <div class="bg-zinc-800 rounded-xl p-4 border border-zinc-700/50">
-          <div class="flex items-center justify-between text-zinc-400 mb-2">
-            <span class="text-xs font-medium">Arquivo stations.json</span>
-            <HardDrive class="w-4 h-4 text-purple-400" />
+        <div class="card-bordered">
+          <div class="stat-top">
+            <span class="stat-label">Arquivo stations.json</span>
+            <HardDrive class="icon-md icon-purple" />
           </div>
-          <p class="text-2xl font-bold font-mono">{{ formatBytes(stats.persistFileSize) }}</p>
+          <p class="stat-value">{{ formatBytes(stats.persistFileSize) }}</p>
         </div>
       </div>
 
       <!-- Seção: Músicas no Servidor (Biblioteca Global & Renomeação) -->
-      <div class="bg-zinc-800 rounded-xl border border-zinc-700/50 overflow-hidden">
-        <div class="p-4 flex items-center justify-between border-b border-zinc-700/50 bg-zinc-800/80">
-          <div class="flex items-center gap-2">
-            <Music class="w-5 h-5 text-emerald-400" />
-            <h2 class="font-bold text-base">Músicas do Servidor (Biblioteca)</h2>
-            <span class="text-xs bg-zinc-700 text-zinc-300 px-2 py-0.5 rounded-full font-mono">{{ globalTracks.length }} faixas</span>
+      <div class="server-library-card">
+        <div class="server-library-header">
+          <div class="server-library-title-group">
+            <Music class="icon-lg text-emerald" />
+            <h2 class="server-library-title">Músicas do Servidor (Biblioteca)</h2>
+            <span class="count-pill">{{ globalTracks.length }} faixas</span>
           </div>
-          <button @click="showGlobalLibrary = !showGlobalLibrary" class="text-xs text-emerald-400 hover:underline">
+          <button @click="showGlobalLibrary = !showGlobalLibrary" class="toggle-link">
             {{ showGlobalLibrary ? 'Recolher' : 'Expandir' }}
           </button>
         </div>
 
-        <div v-if="showGlobalLibrary" class="p-4 space-y-3">
-          <div class="relative max-w-md">
-            <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input v-model="globalSearchQuery" placeholder="Buscar música no servidor pelo nome ou ID..." class="w-full bg-zinc-700 rounded-lg pl-9 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500" />
+        <div v-if="showGlobalLibrary" class="server-library-body">
+          <div class="search-wrapper max-w-md">
+            <Search class="icon-md search-icon" />
+            <input
+              v-model="globalSearchQuery"
+              placeholder="Buscar música no servidor pelo nome ou ID..."
+              class="search-input"
+            />
           </div>
 
-          <div v-if="loadingGlobal" class="text-center py-6 text-zinc-500 text-xs">
+          <div v-if="loadingGlobal" class="empty-state">
             Carregando biblioteca do servidor...
           </div>
-          <div v-else-if="filteredGlobalTracks.length === 0" class="text-center py-6 text-zinc-500 text-xs bg-zinc-900/40 rounded-lg">
+          <div v-else-if="filteredGlobalTracks.length === 0" class="empty-state empty-box">
             Nenhuma música encontrada no servidor.
           </div>
-          <div v-else class="space-y-1.5 max-h-64 overflow-y-auto pr-1">
-            <div v-for="track in filteredGlobalTracks" :key="track.id" class="flex items-center justify-between py-2 px-3 rounded-lg bg-zinc-900/60 hover:bg-zinc-700/40 text-xs transition-colors">
+          <div v-else class="global-tracks-scroll">
+            <div
+              v-for="track in filteredGlobalTracks"
+              :key="track.id"
+              class="global-track-row"
+            >
               <!-- Inline Form / View Title -->
-              <div v-if="editingTrackId === track.id" class="flex items-center gap-2 flex-1 mr-2">
-                <input v-model="editingTrackTitle" @keyup.enter="saveTrackTitle(track.id)" @keyup.esc="cancelEditTrack" class="flex-1 bg-zinc-800 border border-emerald-500 rounded px-2.5 py-1 text-xs text-white outline-none" placeholder="Digite o nome da música..." autofocus />
-                <button @click="saveTrackTitle(track.id)" :disabled="savingTrack" class="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded" title="Salvar">
-                  <Check class="w-3.5 h-3.5" />
+              <div v-if="editingTrackId === track.id" class="inline-edit-row">
+                <input
+                  v-model="editingTrackTitle"
+                  @keyup.enter="saveTrackTitle(track.id)"
+                  @keyup.esc="cancelEditTrack"
+                  class="inline-edit-input"
+                  placeholder="Digite o nome da música..."
+                  autofocus
+                />
+                <button
+                  @click="saveTrackTitle(track.id)"
+                  :disabled="savingTrack"
+                  class="inline-btn save"
+                  title="Salvar"
+                >
+                  <Check class="icon-sm" />
                 </button>
-                <button @click="cancelEditTrack" class="p-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded" title="Cancelar">
-                  <X class="w-3.5 h-3.5" />
+                <button
+                  @click="cancelEditTrack"
+                  class="inline-btn cancel"
+                  title="Cancelar"
+                >
+                  <X class="icon-sm" />
                 </button>
               </div>
 
-              <div v-else class="flex items-center gap-3 min-w-0 flex-1">
-                <Music class="w-4 h-4 text-emerald-400 shrink-0" />
-                <div class="min-w-0 flex-1">
-                  <div class="flex items-center gap-2">
-                    <span class="font-medium text-zinc-100 truncate">{{ track.title }}</span>
-                    <button @click="startEditTrack(track)" class="text-zinc-400 hover:text-emerald-400 transition-colors p-0.5" title="Renomear música">
-                      <Edit2 class="w-3.5 h-3.5" />
+              <div v-else class="global-track-info">
+                <Music class="icon-md text-emerald" />
+                <div class="global-track-text">
+                  <div class="global-track-title-row">
+                    <span class="global-track-name truncate">{{ track.title }}</span>
+                    <button
+                      @click="startEditTrack(track)"
+                      class="rename-btn"
+                      title="Renomear música"
+                    >
+                      <Edit2 class="icon-sm" />
                     </button>
                   </div>
-                  <div class="text-[10px] text-zinc-500 font-mono flex items-center gap-2">
+                  <div class="global-track-sub">
                     <span>Arquivo: {{ track.filename }}</span>
                     <span v-if="track.duration">• {{ formatTime(track.duration) }}</span>
                   </div>
@@ -118,128 +155,187 @@
       </div>
 
       <!-- Barra de Ações Principais -->
-      <div class="bg-zinc-800 rounded-xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 border border-zinc-700/50">
-        <div class="flex items-center gap-3 w-full sm:w-auto">
-          <div class="relative flex-1 sm:w-64">
-            <Search class="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400" />
-            <input v-model="searchQuery" placeholder="Filtrar código da estação..." class="w-full bg-zinc-700 rounded-lg pl-9 pr-3 py-2 text-xs outline-none focus:ring-1 focus:ring-emerald-500 uppercase font-mono" />
+      <div class="card-bordered actions-bar">
+        <div class="actions-bar-search">
+          <div class="search-wrapper">
+            <Search class="icon-md search-icon" />
+            <input
+              v-model="searchQuery"
+              placeholder="Filtrar código da estação..."
+              class="search-input filter-station-input"
+            />
           </div>
         </div>
 
-        <div class="flex items-center gap-2 w-full sm:w-auto justify-end">
-          <button @click="purgeOrphans" :disabled="purging" class="px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors flex items-center gap-2">
-            <Trash2 class="w-3.5 h-3.5" />
+        <div class="actions-bar-btns">
+          <button
+            @click="purgeOrphans"
+            :disabled="purging"
+            class="btn btn-amber btn-md"
+          >
+            <Trash2 class="icon-sm" />
             {{ purging ? 'Limpando...' : 'Purgar Músicas Inexistentes' }}
           </button>
 
-          <button @click="loadData" :disabled="loading" class="p-2 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-300 transition-colors" title="Atualizar Dados">
-            <RefreshCw class="w-4 h-4" :class="{ 'animate-spin': loading }" />
+          <button
+            @click="loadData"
+            :disabled="loading"
+            class="btn btn-secondary icon-only-btn"
+            title="Atualizar Dados"
+          >
+            <RefreshCw class="icon-md" :class="{ 'animate-spin': loading }" />
           </button>
         </div>
       </div>
 
       <!-- Lista de Estações -->
-      <div v-if="loading && stations.length === 0" class="text-center py-12 text-zinc-500 text-sm">
+      <div v-if="loading && stations.length === 0" class="empty-state">
         Carregando informações das estações...
       </div>
 
-      <div v-else-if="filteredStations.length === 0" class="text-center py-12 text-zinc-500 text-sm bg-zinc-800 rounded-xl">
+      <div v-else-if="filteredStations.length === 0" class="card-bordered empty-state">
         Nenhuma estação encontrada.
       </div>
 
-      <div v-else class="space-y-4">
-        <div v-for="st in filteredStations" :key="st.id" class="bg-zinc-800 rounded-xl border border-zinc-700/50 overflow-hidden">
+      <div v-else class="stations-list">
+        <div
+          v-for="st in filteredStations"
+          :key="st.id"
+          class="station-admin-card"
+        >
           <!-- Cabeçalho do Card da Estação -->
-          <div class="p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-zinc-700/50">
-            <div class="flex items-center gap-3">
-              <div class="w-10 h-10 rounded-lg bg-emerald-600/20 flex items-center justify-center font-mono font-bold text-emerald-400 text-base">
-                {{ st.id }}
-              </div>
+          <div class="station-admin-top">
+            <div class="station-admin-id-group">
+              <div class="station-avatar">{{ st.id }}</div>
               <div>
-                <div class="flex items-center gap-2">
-                  <h3 class="font-bold text-base font-mono tracking-wider">{{ st.id }}</h3>
-                  <span v-if="st.state && st.state.isPlaying" class="px-2 py-0.5 bg-emerald-500/20 text-emerald-400 text-[10px] font-medium rounded-full uppercase">Tocando</span>
-                  <span v-else class="px-2 py-0.5 bg-zinc-700 text-zinc-400 text-[10px] font-medium rounded-full uppercase">Pausado</span>
+                <div class="station-title-row">
+                  <h3 class="station-code-heading">{{ st.id }}</h3>
+                  <span v-if="st.state && st.state.isPlaying" class="status-pill playing">
+                    Tocando
+                  </span>
+                  <span v-else class="status-pill paused">Pausado</span>
                 </div>
-                <div class="flex items-center gap-3 text-xs text-zinc-400 mt-0.5">
+                <div class="station-meta-row">
                   <span>{{ st.trackCount }} música(s)</span>
                   <span>•</span>
                   <span>{{ st.activeClients }} conexões ativas</span>
-                  <span v-if="st.missingTrackCount > 0" class="text-amber-400 font-medium">• {{ st.missingTrackCount }} sem arquivo</span>
+                  <span v-if="st.missingTrackCount > 0" class="text-amber font-medium">
+                    • {{ st.missingTrackCount }} sem arquivo
+                  </span>
                 </div>
               </div>
             </div>
 
             <!-- Token e Ações Rápidas -->
-            <div class="flex items-center gap-2 flex-wrap">
+            <div class="station-admin-actions">
               <!-- Copiar Token DJ -->
-              <button @click="copyToken(st.djToken)" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-mono text-zinc-300 flex items-center gap-1.5 transition-colors" title="Copiar Token DJ">
-                <Key class="w-3.5 h-3.5 text-emerald-400" />
+              <button
+                @click="copyToken(st.djToken)"
+                class="btn btn-secondary font-mono"
+                title="Copiar Token DJ"
+              >
+                <Key class="icon-sm text-emerald" />
                 <span>Copiar Token</span>
               </button>
 
               <!-- Entrar como DJ -->
-              <button @click="enterAsDJ(st.id, st.djToken)" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 rounded-lg text-xs font-medium text-white flex items-center gap-1.5 transition-colors">
-                <Disc class="w-3.5 h-3.5" />
+              <button @click="enterAsDJ(st.id, st.djToken)" class="btn btn-primary">
+                <Disc class="icon-sm" />
                 Painel DJ
               </button>
 
               <!-- Ouvir no Painel (Ouvinte Embutido) -->
-              <button @click="listenInAdmin(st.id)" class="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 rounded-lg text-xs font-medium text-white flex items-center gap-1.5 transition-colors" :class="{ 'ring-2 ring-indigo-400': activeListenerStationId === st.id }">
-                <Headphones class="w-3.5 h-3.5" />
+              <button
+                @click="listenInAdmin(st.id)"
+                class="btn btn-indigo"
+                :class="{ 'ring-indigo': activeListenerStationId === st.id }"
+              >
+                <Headphones class="icon-sm" />
                 {{ activeListenerStationId === st.id ? 'Ouvindo...' : 'Ouvir no Painel' }}
               </button>
 
               <!-- Página de Ouvinte Completa -->
-              <button @click="openFullListenerPage(st.id)" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-xs font-medium text-zinc-200 flex items-center gap-1.5 transition-colors" title="Abrir Página de Ouvinte em Modo Completo">
-                <ExternalLink class="w-3.5 h-3.5 text-zinc-400" />
+              <button
+                @click="openFullListenerPage(st.id)"
+                class="btn btn-secondary"
+                title="Abrir Página de Ouvinte em Modo Completo"
+              >
+                <ExternalLink class="icon-sm" />
                 Página Ouvinte
               </button>
 
               <!-- Deletar Estação -->
-              <button @click="confirmDeleteStation(st.id)" class="p-1.5 bg-red-600/20 hover:bg-red-600/40 text-red-400 rounded-lg transition-colors" title="Excluir Estação">
-                <Trash2 class="w-4 h-4" />
+              <button
+                @click="confirmDeleteStation(st.id)"
+                class="btn btn-danger-soft icon-only-sm"
+                title="Excluir Estação"
+              >
+                <Trash2 class="icon-md" />
               </button>
             </div>
           </div>
 
           <!-- Músicas do Repositório da Estação (Expansível) -->
-          <div class="p-4 bg-zinc-800/50">
-            <div class="flex items-center justify-between mb-2">
-              <span class="text-xs font-medium text-zinc-400 uppercase tracking-wide">Repositório da Estação</span>
-              <button @click="toggleExpand(st.id)" class="text-xs text-emerald-400 hover:underline">
+          <div class="station-repo-drawer">
+            <div class="station-repo-header">
+              <span class="station-repo-label">Repositório da Estação</span>
+              <button @click="toggleExpand(st.id)" class="toggle-link">
                 {{ expanded[st.id] ? 'Recolher' : `Ver faixas (${st.repository.length})` }}
               </button>
             </div>
 
-            <div v-if="expanded[st.id]" class="mt-2 space-y-1 max-h-48 overflow-y-auto pr-1">
-              <div v-if="st.repository.length === 0" class="text-xs text-zinc-500 py-2 text-center">
+            <div v-if="expanded[st.id]" class="station-repo-list">
+              <div v-if="st.repository.length === 0" class="empty-state">
                 Repositório vazio.
               </div>
-              <div v-for="track in st.repository" :key="track.id" class="flex items-center justify-between py-1.5 px-2 rounded bg-zinc-900/40 hover:bg-zinc-700/50 text-xs">
+              <div
+                v-for="track in st.repository"
+                :key="track.id"
+                class="station-repo-item"
+              >
                 <!-- Inline edit track title in station repo -->
-                <div v-if="editingTrackId === track.id" class="flex items-center gap-2 flex-1 mr-2">
-                  <input v-model="editingTrackTitle" @keyup.enter="saveTrackTitle(track.id)" @keyup.esc="cancelEditTrack" class="flex-1 bg-zinc-800 border border-emerald-500 rounded px-2 py-0.5 text-xs text-white outline-none" autofocus />
-                  <button @click="saveTrackTitle(track.id)" :disabled="savingTrack" class="p-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded">
-                    <Check class="w-3 h-3" />
+                <div v-if="editingTrackId === track.id" class="inline-edit-row">
+                  <input
+                    v-model="editingTrackTitle"
+                    @keyup.enter="saveTrackTitle(track.id)"
+                    @keyup.esc="cancelEditTrack"
+                    class="inline-edit-input"
+                    autofocus
+                  />
+                  <button
+                    @click="saveTrackTitle(track.id)"
+                    :disabled="savingTrack"
+                    class="inline-btn save"
+                  >
+                    <Check class="icon-xs" />
                   </button>
-                  <button @click="cancelEditTrack" class="p-1 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded">
-                    <X class="w-3 h-3" />
+                  <button @click="cancelEditTrack" class="inline-btn cancel">
+                    <X class="icon-xs" />
                   </button>
                 </div>
 
-                <div v-else class="flex items-center gap-2 min-w-0">
-                  <Music class="w-3.5 h-3.5 text-zinc-500 shrink-0" />
+                <div v-else class="station-repo-item-left">
+                  <Music class="icon-sm text-muted" />
                   <span class="truncate">{{ track.title }}</span>
-                  <button @click="startEditTrack(track)" class="text-zinc-500 hover:text-emerald-400 p-0.5" title="Renomear música">
-                    <Edit2 class="w-3 h-3" />
+                  <button
+                    @click="startEditTrack(track)"
+                    class="rename-btn"
+                    title="Renomear música"
+                  >
+                    <Edit2 class="icon-xs" />
                   </button>
-                  <span v-if="track.duration" class="text-[10px] text-zinc-500 font-mono">({{ formatTime(track.duration) }})</span>
+                  <span v-if="track.duration" class="repo-item-duration">
+                    ({{ formatTime(track.duration) }})
+                  </span>
                 </div>
 
-                <div class="flex items-center gap-2">
-                  <button @click="removeTrack(st.id, track.id)" class="text-red-400 hover:text-red-300 p-1" title="Remover da estação">
-                    <X class="w-3.5 h-3.5" />
+                <div>
+                  <button
+                    @click="removeTrack(st.id, track.id)"
+                    class="remove-track-btn"
+                    title="Remover da estação"
+                  >
+                    <X class="icon-sm" />
                   </button>
                 </div>
               </div>
@@ -250,45 +346,61 @@
     </div>
 
     <!-- Live Listener Player Drawer (Fixed at Bottom when Active) -->
-    <div v-if="activeListenerStationId" class="fixed bottom-0 left-0 right-0 bg-zinc-950 border-t border-indigo-500/50 shadow-2xl p-3 z-50 backdrop-blur-md">
-      <div class="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-3">
-        <div class="flex items-center gap-3 w-full sm:w-auto">
-          <div class="w-10 h-10 rounded-full bg-indigo-600/30 border border-indigo-500/50 flex items-center justify-center text-indigo-400 shrink-0">
-            <Headphones class="w-5 h-5 animate-pulse" />
+    <div v-if="activeListenerStationId" class="live-drawer">
+      <div class="live-drawer-inner">
+        <div class="live-drawer-left">
+          <div class="live-avatar">
+            <Headphones class="icon-lg animate-pulse" />
           </div>
-          <div class="min-w-0">
-            <div class="flex items-center gap-2">
-              <span class="text-xs font-mono bg-indigo-900/60 text-indigo-300 px-2 py-0.5 rounded font-bold">ESTAÇÃO {{ activeListenerStationId }}</span>
-              <span v-if="listenerState && listenerState.isPlaying" class="text-[10px] bg-emerald-500/20 text-emerald-400 px-2 py-0.5 rounded-full font-medium uppercase">AO VIVO</span>
-              <span v-else class="text-[10px] bg-zinc-800 text-zinc-400 px-2 py-0.5 rounded-full font-medium uppercase">PAUSADO</span>
+          <div class="live-info">
+            <div class="live-badges-row">
+              <span class="live-station-tag">ESTAÇÃO {{ activeListenerStationId }}</span>
+              <span v-if="listenerState && listenerState.isPlaying" class="status-pill playing">
+                AO VIVO
+              </span>
+              <span v-else class="status-pill paused">PAUSADO</span>
             </div>
-            <p class="text-xs text-zinc-200 truncate max-w-xs sm:max-w-md mt-0.5">
+            <p class="live-song-title truncate">
               {{ currentListenerSongTitle }}
             </p>
           </div>
         </div>
 
-        <div class="flex items-center gap-4 w-full sm:w-auto justify-end">
+        <div class="live-drawer-right">
           <audio ref="audioRef" preload="auto"></audio>
 
           <!-- Volume Controls -->
-          <div class="flex items-center gap-2">
-            <button @click="toggleMute" class="text-zinc-400 hover:text-white p-1">
-              <VolumeX v-if="muted || volume === 0" class="w-4 h-4 text-red-400" />
-              <Volume2 v-else class="w-4 h-4 text-indigo-400" />
+          <div class="live-volume">
+            <button @click="toggleMute" class="btn-icon">
+              <VolumeX v-if="muted || volume === 0" class="icon-md text-red" />
+              <Volume2 v-else class="icon-md icon-indigo" />
             </button>
-            <input type="range" min="0" max="100" v-model.number="volume" @input="updateVolume" class="w-20 h-1.5 bg-zinc-700 rounded-full appearance-none cursor-pointer accent-indigo-500" />
+            <input
+              type="range"
+              min="0"
+              max="100"
+              v-model.number="volume"
+              @input="updateVolume"
+              class="range-slider live-slider"
+            />
           </div>
 
           <!-- Open Page -->
-          <button @click="openFullListenerPage(activeListenerStationId)" class="px-3 py-1.5 bg-zinc-800 hover:bg-zinc-700 rounded-lg text-xs font-medium text-zinc-300 flex items-center gap-1">
-            <ExternalLink class="w-3.5 h-3.5" />
+          <button
+            @click="openFullListenerPage(activeListenerStationId)"
+            class="btn btn-secondary"
+          >
+            <ExternalLink class="icon-sm" />
             Ampliar
           </button>
 
           <!-- Close Drawer -->
-          <button @click="stopListener" class="p-1.5 bg-zinc-800 hover:bg-red-600/30 text-zinc-400 hover:text-red-400 rounded-lg transition-colors" title="Parar Reprodução">
-            <X class="w-4 h-4" />
+          <button
+            @click="stopListener"
+            class="btn btn-secondary close-drawer-btn"
+            title="Parar Reprodução"
+          >
+            <X class="icon-md" />
           </button>
         </div>
       </div>
@@ -325,12 +437,10 @@ const globalSearchQuery = ref('')
 const showGlobalLibrary = ref(true)
 const expanded = ref({})
 
-// Editing track title
 const editingTrackId = ref(null)
 const editingTrackTitle = ref('')
 const savingTrack = ref(false)
 
-// Live listener inside Admin
 const activeListenerStationId = ref(null)
 const listenerState = ref(null)
 const listenerPlaylist = ref([])
@@ -409,12 +519,10 @@ async function saveTrackTitle(trackId) {
   try {
     const res = await renameTrackAdmin(trackId, editingTrackTitle.value.trim())
     actionMessage.value = res.message || 'Nome da música atualizado com sucesso!'
-    
-    // Update locally in globalTracks
+
     const gt = globalTracks.value.find(t => t.id === trackId || t.filename === trackId)
     if (gt) gt.title = editingTrackTitle.value.trim()
 
-    // Update locally in stations repositories & playlists
     stations.value.forEach(s => {
       s.repository.forEach(t => {
         if (t.id === trackId || t.filename === trackId) t.title = editingTrackTitle.value.trim()
@@ -597,3 +705,621 @@ onUnmounted(() => {
   stopListener()
 })
 </script>
+
+<style scoped>
+.admin-page {
+  padding-bottom: 6rem;
+}
+
+.admin-brand-title {
+  font-weight: 700;
+  font-size: 1.125rem;
+}
+
+.admin-main {
+  flex: 1;
+  max-width: 72rem;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.alert-banner {
+  background-color: rgba(5, 150, 105, 0.2);
+  border: 1px solid rgba(16, 185, 129, 0.3);
+  color: var(--emerald-300);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius-lg);
+  font-size: 0.875rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.stats-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .stats-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .stats-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+.stat-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: var(--zinc-400);
+  margin-bottom: 0.5rem;
+}
+
+.stat-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+.stat-value {
+  font-size: 1.5rem;
+  font-weight: 700;
+  font-family: var(--font-mono);
+}
+
+.stat-warning {
+  border-color: rgba(245, 158, 11, 0.5);
+  background-color: rgba(69, 26, 3, 0.15);
+}
+
+.icon-blue {
+  color: var(--blue-400);
+}
+
+.icon-purple {
+  color: var(--purple-400);
+}
+
+.icon-indigo {
+  color: var(--indigo-400);
+}
+
+/* Server Library Card */
+.server-library-card {
+  background-color: var(--zinc-800);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+  overflow: hidden;
+}
+
+.server-library-header {
+  padding: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+.server-library-title-group {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.server-library-title {
+  font-weight: 700;
+  font-size: 1rem;
+}
+
+.count-pill {
+  font-size: 0.75rem;
+  background-color: var(--zinc-700);
+  color: var(--zinc-300);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-full);
+  font-family: var(--font-mono);
+}
+
+.toggle-link {
+  font-size: 0.75rem;
+  color: var(--emerald-400);
+}
+
+.toggle-link:hover {
+  text-decoration: underline;
+}
+
+.server-library-body {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.max-w-md {
+  max-width: 28rem;
+}
+
+.empty-box {
+  background-color: rgba(24, 24, 27, 0.4);
+  border-radius: var(--radius-lg);
+}
+
+.global-tracks-scroll {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.global-track-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.5rem 0.75rem;
+  border-radius: var(--radius-lg);
+  background-color: rgba(24, 24, 27, 0.6);
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease;
+}
+
+.global-track-row:hover {
+  background-color: rgba(63, 63, 70, 0.4);
+}
+
+.inline-edit-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex: 1;
+  margin-right: 0.5rem;
+}
+
+.inline-edit-input {
+  flex: 1;
+  background-color: var(--zinc-800);
+  border: 1px solid var(--emerald-500);
+  border-radius: var(--radius-sm);
+  padding: 0.25rem 0.625rem;
+  font-size: 0.75rem;
+  color: #ffffff;
+  outline: none;
+}
+
+.inline-btn {
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.inline-btn.save {
+  background-color: var(--emerald-600);
+  color: #ffffff;
+}
+
+.inline-btn.save:hover {
+  background-color: var(--emerald-500);
+}
+
+.inline-btn.cancel {
+  background-color: var(--zinc-700);
+  color: var(--zinc-300);
+}
+
+.inline-btn.cancel:hover {
+  background-color: var(--zinc-600);
+}
+
+.global-track-info {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-width: 0;
+  flex: 1;
+}
+
+.global-track-text {
+  min-width: 0;
+  flex: 1;
+}
+
+.global-track-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.global-track-name {
+  font-weight: 500;
+  color: var(--zinc-100);
+}
+
+.rename-btn {
+  color: var(--zinc-400);
+  padding: 0.125rem;
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+
+.rename-btn:hover {
+  color: var(--emerald-400);
+}
+
+.global-track-sub {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+  font-family: var(--font-mono);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* Actions Bar */
+.actions-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+@media (min-width: 640px) {
+  .actions-bar {
+    flex-direction: row;
+  }
+}
+
+.actions-bar-search {
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .actions-bar-search {
+    width: 16rem;
+  }
+}
+
+.filter-station-input {
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  text-transform: uppercase;
+  font-family: var(--font-mono);
+}
+
+.actions-bar-btns {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .actions-bar-btns {
+    width: auto;
+  }
+}
+
+.icon-only-btn {
+  padding: 0.5rem;
+}
+
+/* Stations List */
+.stations-list {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.station-admin-card {
+  background-color: var(--zinc-800);
+  border-radius: var(--radius-xl);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+  overflow: hidden;
+}
+
+.station-admin-top {
+  padding: 1rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 1rem;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+@media (min-width: 768px) {
+  .station-admin-top {
+    flex-direction: row;
+    align-items: center;
+  }
+}
+
+.station-admin-id-group {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.station-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-lg);
+  background-color: rgba(5, 150, 105, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--emerald-400);
+  font-size: 1rem;
+}
+
+.station-title-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.station-code-heading {
+  font-weight: 700;
+  font-size: 1rem;
+  font-family: var(--font-mono);
+  letter-spacing: 0.05em;
+}
+
+.status-pill {
+  padding: 0.125rem 0.5rem;
+  font-size: 0.625rem;
+  font-weight: 500;
+  border-radius: var(--radius-full);
+  text-transform: uppercase;
+}
+
+.status-pill.playing {
+  background-color: rgba(16, 185, 129, 0.2);
+  color: var(--emerald-400);
+}
+
+.status-pill.paused {
+  background-color: var(--zinc-700);
+  color: var(--zinc-400);
+}
+
+.station-meta-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  font-size: 0.75rem;
+  color: var(--zinc-400);
+  margin-top: 0.125rem;
+  flex-wrap: wrap;
+}
+
+.font-medium {
+  font-weight: 500;
+}
+
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+.station-admin-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.ring-indigo {
+  box-shadow: 0 0 0 2px var(--indigo-400);
+}
+
+.icon-only-sm {
+  padding: 0.375rem;
+}
+
+/* Station Repo Drawer */
+.station-repo-drawer {
+  padding: 1rem;
+  background-color: rgba(39, 39, 42, 0.5);
+}
+
+.station-repo-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.station-repo-label {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.station-repo-list {
+  margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 12rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.station-repo-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-sm);
+  background-color: rgba(24, 24, 27, 0.4);
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease;
+}
+
+.station-repo-item:hover {
+  background-color: rgba(63, 63, 70, 0.5);
+}
+
+.station-repo-item-left {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+
+.repo-item-duration {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+  font-family: var(--font-mono);
+}
+
+.remove-track-btn {
+  color: var(--red-400);
+  padding: 0.25rem;
+  display: flex;
+  align-items: center;
+}
+
+.remove-track-btn:hover {
+  color: var(--red-300);
+}
+
+/* Live Listener Drawer */
+.live-drawer {
+  position: fixed;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  background-color: rgba(9, 9, 11, 0.92);
+  border-top: 1px solid rgba(99, 102, 241, 0.5);
+  box-shadow: 0 -10px 25px rgba(0, 0, 0, 0.6);
+  padding: 0.75rem;
+  z-index: 50;
+  backdrop-filter: blur(12px);
+}
+
+.live-drawer-inner {
+  max-width: 72rem;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .live-drawer-inner {
+    flex-direction: row;
+  }
+}
+
+.live-drawer-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .live-drawer-left {
+    width: auto;
+  }
+}
+
+.live-avatar {
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: var(--radius-full);
+  background-color: rgba(79, 70, 229, 0.3);
+  border: 1px solid rgba(99, 102, 241, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--indigo-400);
+  flex-shrink: 0;
+}
+
+.live-info {
+  min-width: 0;
+}
+
+.live-badges-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-station-tag {
+  font-size: 0.75rem;
+  font-family: var(--font-mono);
+  background-color: rgba(49, 46, 129, 0.6);
+  color: var(--indigo-300);
+  padding: 0.125rem 0.5rem;
+  border-radius: var(--radius-sm);
+  font-weight: 700;
+}
+
+.live-song-title {
+  font-size: 0.75rem;
+  color: var(--zinc-200);
+  max-width: 24rem;
+  margin-top: 0.125rem;
+}
+
+.live-drawer-right {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 1rem;
+  width: 100%;
+}
+
+@media (min-width: 640px) {
+  .live-drawer-right {
+    width: auto;
+  }
+}
+
+.live-volume {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.live-slider {
+  width: 5rem;
+  accent-color: var(--indigo-500);
+}
+
+.live-slider::-webkit-slider-thumb {
+  background-color: var(--indigo-400);
+}
+
+.live-slider::-moz-range-thumb {
+  background-color: var(--indigo-400);
+}
+
+.close-drawer-btn:hover {
+  background-color: rgba(220, 38, 38, 0.3);
+  color: var(--red-400);
+}
+</style>

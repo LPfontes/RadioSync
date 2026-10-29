@@ -6,7 +6,6 @@ COPY frontend/ .
 RUN npm run build
 
 FROM golang:1.26-alpine AS backend
-RUN apk add --no-cache ffmpeg
 WORKDIR /app
 COPY backend/go.mod backend/go.sum ./
 RUN go mod download

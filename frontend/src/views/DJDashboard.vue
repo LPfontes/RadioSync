@@ -1,206 +1,280 @@
 <template>
-  <div class="min-h-screen bg-zinc-900 text-zinc-100 flex flex-col">
-    <header class="border-b border-zinc-800 px-4 py-3">
-      <div class="max-w-4xl mx-auto flex items-center justify-between">
-        <div class="flex items-center gap-2.5">
-          <Disc class="w-5 h-5 text-emerald-500" />
-          <span class="font-bold text-emerald-500">RadioSync — DJ</span>
-          <span class="text-xs bg-zinc-800 px-2 py-0.5 rounded font-mono">{{ store.stationId }}</span>
+  <div class="app-page">
+    <header class="app-header">
+      <div class="header-inner">
+        <div class="header-brand">
+          <Disc class="icon-lg text-emerald" />
+          <span class="brand-name">RadioSync — DJ</span>
+          <span class="badge-code">{{ store.stationId }}</span>
         </div>
-        <div class="flex items-center gap-3">
-          <button @click="switchToListener" class="text-xs text-zinc-400 hover:text-amber-400 transition-colors" title="Voltar a ser ouvinte liberando a vaga de DJ">
+        <div class="header-actions">
+          <button
+            @click="switchToListener"
+            class="btn-text amber-hover"
+            title="Voltar a ser ouvinte liberando a vaga de DJ"
+          >
             Entregar cargo de DJ
           </button>
-          <button @click="leave" class="text-xs text-zinc-400 hover:text-zinc-200 transition-colors">Sair</button>
+          <button @click="leave" class="btn-text">Sair</button>
         </div>
       </div>
     </header>
 
-    <div class="flex-1 max-w-4xl w-full mx-auto p-4 space-y-6">
-      <div class="bg-zinc-800 rounded-lg p-4 text-center">
-        <p class="text-xs text-zinc-400 mb-1">Compartilhe o código da estação</p>
-        <div class="flex items-center justify-center gap-3">
-          <span class="text-2xl font-bold tracking-widest text-emerald-400 font-mono">{{ store.stationId }}</span>
-          <button @click="copyCode" class="text-xs text-zinc-400 hover:text-emerald-400 transition-colors">
-            <Copy class="w-4 h-4" />
-          </button>
+    <div class="dj-main">
+      <div class="station-code-card">
+        <div class="station-actions-grid">
+          <!-- Coluna 1: Código da Estação -->
+          <div class="station-code-block station-action-block">
+            <p class="station-code-label">Código da estação</p>
+            <div class="station-code-row">
+              <span class="station-code-value">{{ store.stationId }}</span>
+              <button @click="copyCode" class="btn-text copy-btn" title="Copiar código">
+                <Copy class="icon-md" />
+              </button>
+            </div>
+            <span class="station-code-sub">Compartilhe com seus ouvintes</span>
+          </div>
+
+          <!-- Coluna 2: Upload de Músicas -->
+          <div class="station-action-block">
+            <h3 class="subsection-title">Upload de Músicas</h3>
+            <div class="upload-section">
+              <input
+                type="file"
+                ref="fileInputRef"
+                accept=".mp3,.mp4,.webm,.wav,.ogg,.flac,.aac,.m4a"
+                @change="selectFile"
+                class="file-input"
+              />
+              <div v-if="selectedFile" class="file-meta-box">
+                <span class="selected-filename truncate">{{ selectedFile.name }}</span>
+                <div class="two-col-grid">
+                  <select v-model="uploadCategory" class="select">
+                    <option value="">-- Categoria (Opcional) --</option>
+                    <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
+                  </select>
+                  <select v-model="uploadTheme" class="select">
+                    <option value="">-- Tema (Opcional) --</option>
+                    <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
+                  </select>
+                </div>
+                <div class="flex-end">
+                  <button @click="handleUpload" :disabled="uploading" class="btn btn-primary">
+                    {{ uploading ? 'Enviando...' : 'Fazer Upload' }}
+                  </button>
+                </div>
+              </div>
+              <p v-if="uploadError" class="error-text">{{ uploadError }}</p>
+            </div>
+          </div>
+
+          <!-- Download do YouTube -->
+          <div class="station-action-block yt-section">
+            <h3 class="subsection-title-icon">
+              <Youtube class="icon-md text-red" />
+              Baixar do YouTube (yt-dlp)
+            </h3>
+            <div class="yt-form">
+              <div class="yt-input-row">
+                <input
+                  v-model="youtubeUrl"
+                  placeholder="URL do vídeo (ex: https://youtu.be/...)"
+                  @keyup.enter="handleYouTubeDownload"
+                  class="input yt-input"
+                />
+                <button
+                  @click="handleYouTubeDownload"
+                  :disabled="downloadingYT || !youtubeUrl.trim()"
+                  class="btn btn-danger"
+                >
+                  {{ downloadingYT ? 'Baixando...' : 'Baixar' }}
+                </button>
+              </div>
+              <div v-if="youtubeUrl.trim()" class="file-meta-box two-col-grid">
+                <select v-model="ytCategory" class="select">
+                  <option value="">-- Categoria (Opcional) --</option>
+                  <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
+                </select>
+                <select v-model="ytTheme" class="select">
+                  <option value="">-- Tema (Opcional) --</option>
+                  <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
+                </select>
+              </div>
+            </div>
+
+            <!-- Indicador e Botão de Cookies -->
+            <div class="cookie-bar">
+              <span class="cookie-status" :class="cookieStatus ? 'active' : 'inactive'">
+                <span class="cookie-dot" :class="cookieStatus ? 'active' : 'inactive'"></span>
+                {{ cookieStatus ? 'Cookies do YouTube ativados' : 'Sem cookies do YouTube' }}
+              </span>
+              <button @click="showCookieModal = !showCookieModal" class="cookie-toggle-btn">
+                <Key class="icon-xs text-amber" />
+                {{ showCookieModal ? 'Fechar' : 'Configurar cookies.txt' }}
+              </button>
+            </div>
+
+            <!-- Form/Card de Importação de Cookies -->
+            <div v-if="showCookieModal" class="cookie-card">
+              <div class="cookie-card-header">
+                <h4 class="cookie-card-title">
+                  <Key class="icon-sm text-amber" />
+                  Importar cookies.txt do YouTube
+                </h4>
+              </div>
+              <p class="cookie-card-desc">
+                Selecione o arquivo <code class="code-amber">cookies.txt</code> exportado do seu navegador ou cole o conteúdo abaixo:
+              </p>
+
+              <div class="cookie-inputs">
+                <input
+                  type="file"
+                  ref="cookieFileRef"
+                  accept=".txt"
+                  @change="onCookieFileSelected"
+                  class="file-input"
+                />
+                <textarea
+                  v-model="cookieContent"
+                  rows="3"
+                  placeholder="Cole o conteúdo do cookies.txt aqui..."
+                  class="textarea"
+                ></textarea>
+              </div>
+
+              <div class="cookie-card-footer">
+                <span
+                  v-if="cookieMsg"
+                  class="cookie-msg"
+                  :class="cookieMsg.includes('sucesso') ? 'text-emerald' : 'text-red'"
+                >
+                  {{ cookieMsg }}
+                </span>
+                <div v-else></div>
+                <button
+                  @click="handleSaveCookies"
+                  :disabled="savingCookies || !cookieContent.trim()"
+                  class="btn btn-amber btn-sm"
+                >
+                  {{ savingCookies ? 'Salvando...' : 'Salvar Cookies' }}
+                </button>
+              </div>
+            </div>
+
+            <p v-if="ytError" class="error-text">{{ ytError }}</p>
+          </div>
         </div>
       </div>
 
-      <div class="bg-zinc-800 rounded-lg p-6">
-        <Player @toggle-play="handleTogglePlay" />
-      </div>
-
-      <!-- Mixer de Sons de Fundo e Efeitos -->
-      <AudioMixer
-        :is-d-j="true"
-        :available-tracks="allAvailableTracks"
-        @update-mixer="handleUpdateMixer"
-      />
-
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <!-- Esquerda: Repositório / Biblioteca Global / Sugestões -->
-        <div class="bg-zinc-800 rounded-lg p-4 flex flex-col">
+      <div class="dj-three-col">
+        <!-- Coluna 1: Repositório / Biblioteca Global / Sugestões -->
+        <div class="card left-panel">
           <!-- Navegação de Abas -->
-          <div class="flex border-b border-zinc-700 mb-4 pb-2 gap-2 overflow-x-auto">
-            <button @click="activeTab = 'repo'" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0" :class="activeTab === 'repo' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'">
-              <Folder class="w-3.5 h-3.5" />
+          <div class="tabs-bar dj-tabs">
+            <button
+              @click="activeTab = 'repo'"
+              class="tab-btn"
+              :class="{ active: activeTab === 'repo' }"
+            >
+              <Folder class="icon-sm" />
               Repositório Local
             </button>
-            <button @click="switchTab('global')" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0" :class="activeTab === 'global' ? 'bg-emerald-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'">
-              <Library class="w-3.5 h-3.5" />
+            <button
+              @click="switchTab('global')"
+              class="tab-btn"
+              :class="{ active: activeTab === 'global' }"
+            >
+              <Library class="icon-sm" />
               Biblioteca Global
             </button>
-            <button @click="activeTab = 'suggestions'" class="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-medium transition-colors shrink-0 relative" :class="activeTab === 'suggestions' ? 'bg-amber-600 text-white' : 'text-zinc-400 hover:bg-zinc-700'">
-              <MessageSquare class="w-3.5 h-3.5" />
+            <button
+              @click="activeTab = 'suggestions'"
+              class="tab-btn"
+              :class="{ 'active-amber': activeTab === 'suggestions' }"
+            >
+              <MessageSquare class="icon-sm" />
               Sugestões
-              <span v-if="store.suggestions && store.suggestions.length > 0" class="ml-1 bg-amber-400 text-zinc-950 font-bold text-[10px] px-1.5 py-0.2 rounded-full">
+              <span
+                v-if="store.suggestions && store.suggestions.length > 0"
+                class="suggestions-count-badge"
+              >
                 {{ store.suggestions.length }}
               </span>
             </button>
           </div>
 
           <!-- Conteúdo Aba Repositório Local -->
-          <div v-if="activeTab === 'repo'" class="space-y-4">
-            <div>
-              <h3 class="text-xs font-medium text-zinc-400 mb-2">Upload de Músicas</h3>
-              <div class="space-y-3">
-                <input type="file" ref="fileInputRef" accept=".mp3,.mp4,.webm,.wav,.ogg,.flac,.aac,.m4a" @change="selectFile" class="block w-full text-xs text-zinc-400 file:mr-3 file:py-1.5 file:px-3 file:rounded-lg file:border-0 file:text-xs file:font-medium file:bg-zinc-700 file:text-zinc-200 hover:file:bg-zinc-600" />
-                <div v-if="selectedFile" class="space-y-2 pt-1 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-700/60">
-                  <span class="block truncate text-xs text-zinc-200 font-medium">{{ selectedFile.name }}</span>
-                  <div class="grid grid-cols-2 gap-2">
-                    <select v-model="uploadCategory" class="bg-zinc-800 text-zinc-300 text-xs rounded p-1.5 border border-zinc-700 outline-none focus:ring-1 focus:ring-emerald-500">
-                      <option value="">-- Categoria (Opcional) --</option>
-                      <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
-                    </select>
-                    <select v-model="uploadTheme" class="bg-zinc-800 text-zinc-300 text-xs rounded p-1.5 border border-zinc-700 outline-none focus:ring-1 focus:ring-emerald-500">
-                      <option value="">-- Tema (Opcional) --</option>
-                      <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
-                    </select>
-                  </div>
-                  <div class="flex justify-end">
-                    <button @click="handleUpload" :disabled="uploading" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-600 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors">
-                      {{ uploading ? 'Enviando...' : 'Fazer Upload' }}
-                    </button>
-                  </div>
-                </div>
-                <p v-if="uploadError" class="text-xs text-red-400">{{ uploadError }}</p>
-              </div>
-            </div>
-
-            <!-- Download do YouTube -->
-            <div class="space-y-2 pt-2 border-t border-zinc-700/50">
-              <h3 class="text-xs font-medium text-zinc-400 flex items-center gap-1.5">
-                <Youtube class="w-4 h-4 text-red-500" />
-                Baixar do YouTube (yt-dlp)
-              </h3>
-              <div class="space-y-2">
-                <div class="flex gap-2">
-                  <input v-model="youtubeUrl" placeholder="URL do vídeo (ex: https://youtu.be/...)" @keyup.enter="handleYouTubeDownload" class="flex-1 bg-zinc-700 rounded-lg px-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-red-500" />
-                  <button @click="handleYouTubeDownload" :disabled="downloadingYT || !youtubeUrl.trim()" class="px-3 py-1.5 bg-red-600 hover:bg-red-500 disabled:bg-zinc-600 disabled:opacity-50 rounded-lg text-xs font-medium transition-colors whitespace-nowrap">
-                    {{ downloadingYT ? 'Baixando...' : 'Baixar' }}
-                  </button>
-                </div>
-                <div v-if="youtubeUrl.trim()" class="grid grid-cols-2 gap-2 bg-zinc-900/60 p-2 rounded-lg border border-zinc-700/60">
-                  <select v-model="ytCategory" class="bg-zinc-800 text-zinc-300 text-xs rounded p-1.5 border border-zinc-700 outline-none focus:ring-1 focus:ring-red-500">
-                    <option value="">-- Categoria (Opcional) --</option>
-                    <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
-                  </select>
-                  <select v-model="ytTheme" class="bg-zinc-800 text-zinc-300 text-xs rounded p-1.5 border border-zinc-700 outline-none focus:ring-1 focus:ring-red-500">
-                    <option value="">-- Tema (Opcional) --</option>
-                    <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
-                  </select>
-                </div>
-              </div>
-
-              <!-- Indicador e Botão de Cookies -->
-              <div class="flex items-center justify-between text-xs pt-1">
-                <span class="flex items-center gap-1 text-[11px]" :class="cookieStatus ? 'text-emerald-400' : 'text-zinc-500'">
-                  <span class="w-2 h-2 rounded-full" :class="cookieStatus ? 'bg-emerald-500' : 'bg-zinc-600'"></span>
-                  {{ cookieStatus ? 'Cookies do YouTube ativados' : 'Sem cookies do YouTube' }}
-                </span>
-                <button @click="showCookieModal = !showCookieModal" class="text-[11px] text-zinc-400 hover:text-zinc-200 underline flex items-center gap-1">
-                  <Key class="w-3 h-3 text-amber-400" />
-                  {{ showCookieModal ? 'Fechar' : 'Configurar cookies.txt' }}
-                </button>
-              </div>
-
-              <!-- Form/Card de Importação de Cookies -->
-              <div v-if="showCookieModal" class="p-3 bg-zinc-900/90 border border-zinc-700/80 rounded-lg space-y-2.5 mt-2">
-                <div class="flex items-center justify-between">
-                  <h4 class="text-xs font-semibold text-zinc-200 flex items-center gap-1.5">
-                    <Key class="w-3.5 h-3.5 text-amber-400" />
-                    Importar cookies.txt do YouTube
-                  </h4>
-                </div>
-                <p class="text-[11px] text-zinc-400 leading-tight">
-                  Selecione o arquivo <code class="text-amber-300">cookies.txt</code> exportado do seu navegador ou cole o conteúdo abaixo:
-                </p>
-
-                <div class="flex flex-col gap-2">
-                  <input type="file" ref="cookieFileRef" accept=".txt" @change="onCookieFileSelected" class="text-xs text-zinc-400 file:mr-2 file:py-1 file:px-2 file:rounded file:border-0 file:text-xs file:bg-zinc-700 file:text-zinc-300 hover:file:bg-zinc-600 cursor-pointer" />
-                  <textarea v-model="cookieContent" rows="3" placeholder="Cole o conteúdo do cookies.txt aqui..." class="w-full bg-zinc-800 rounded p-2 text-[10px] font-mono text-zinc-300 outline-none focus:ring-1 focus:ring-amber-500 resize-none"></textarea>
-                </div>
-
-                <div class="flex items-center justify-between pt-1">
-                  <span v-if="cookieMsg" class="text-[11px]" :class="cookieMsg.includes('sucesso') ? 'text-emerald-400' : 'text-red-400'">{{ cookieMsg }}</span>
-                  <div v-else></div>
-                  <button @click="handleSaveCookies" :disabled="savingCookies || !cookieContent.trim()" class="px-3 py-1 bg-amber-600 hover:bg-amber-500 disabled:bg-zinc-700 disabled:opacity-50 text-white rounded text-xs font-medium transition-colors">
-                    {{ savingCookies ? 'Salvando...' : 'Salvar Cookies' }}
-                  </button>
-                </div>
-              </div>
-
-              <p v-if="ytError" class="text-xs text-red-400">{{ ytError }}</p>
-            </div>
-
+          <div v-if="activeTab === 'repo'" class="tab-content">
             <!-- Lista e Filtros de Músicas do Repositório Local -->
-            <div class="space-y-2 pt-2 border-t border-zinc-700/50">
-              <div class="flex items-center justify-between">
-                <p class="text-xs text-zinc-400 font-medium flex items-center gap-1">
-                  <Filter class="w-3 h-3 text-emerald-400" />
+            <div class="repo-list-section">
+              <div class="repo-list-header">
+                <p class="subsection-title-icon">
+                  <Filter class="icon-xs text-emerald" />
                   Músicas desta Estação
                 </p>
               </div>
 
               <!-- Barra de Pesquisa e Filtros -->
-              <div class="space-y-1.5">
-                <div class="relative">
-                  <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-                  <input v-model="repoSearchQuery" placeholder="Buscar no repositório local..." class="w-full bg-zinc-700/80 rounded-lg pl-8 pr-3 py-1 text-xs outline-none focus:ring-1 focus:ring-emerald-500" />
+              <div class="filter-controls">
+                <div class="search-wrapper">
+                  <Search class="icon-sm search-icon" />
+                  <input
+                    v-model="repoSearchQuery"
+                    placeholder="Buscar no repositório local..."
+                    class="search-input"
+                  />
                 </div>
-                <div class="grid grid-cols-2 gap-1.5 text-xs">
-                  <select v-model="repoCategoryFilter" class="bg-zinc-700/60 text-zinc-300 text-[11px] rounded px-2 py-1 outline-none border border-zinc-700">
+                <div class="two-col-grid">
+                  <select v-model="repoCategoryFilter" class="select select-sm">
                     <option value="">Todas Categorias</option>
                     <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
                   </select>
-                  <select v-model="repoThemeFilter" class="bg-zinc-700/60 text-zinc-300 text-[11px] rounded px-2 py-1 outline-none border border-zinc-700">
+                  <select v-model="repoThemeFilter" class="select select-sm">
                     <option value="">Todos Temas</option>
                     <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
                   </select>
                 </div>
               </div>
 
-              <div v-if="filteredRepoTracks.length === 0" class="text-zinc-500 text-xs text-center py-4">
+              <div v-if="filteredRepoTracks.length === 0" class="empty-state">
                 Nenhuma música encontrada no repositório local
               </div>
-              <div v-else class="space-y-1 max-h-64 overflow-y-auto pr-1">
-                <div v-for="track in filteredRepoTracks" :key="track.id" class="flex items-center gap-1.5 py-1.5 px-2 rounded hover:bg-zinc-700/80 cursor-pointer text-xs group">
-                  <div @click="addToPlaylist(track.id)" class="flex items-center gap-1.5 flex-1 min-w-0">
-                    <Plus class="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition-transform shrink-0" />
-                    <span class="truncate font-medium text-zinc-200">{{ track.title }}</span>
+              <div v-else class="tracks-grid">
+                <div
+                  v-for="track in filteredRepoTracks"
+                  :key="track.id"
+                  class="track-cell"
+                >
+                  <div class="track-cell-cover" @click="addToPlaylist(track.id)" title="Clique para adicionar à playlist">
+                    <img v-if="track.coverUrl" :src="track.coverUrl" class="track-cell-img" alt="Capa" />
+                    <div v-else class="track-cell-placeholder">
+                      <Music class="icon-lg text-emerald" />
+                    </div>
+                    <div class="track-cell-overlay">
+                      <Plus class="icon-md" />
+                    </div>
                   </div>
-                  <div class="flex items-center gap-1 shrink-0">
-                    <span v-if="track.category" class="bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.2 rounded text-[10px]">
-                      {{ track.category }}
-                    </span>
-                    <span v-if="track.theme" class="bg-sky-950 text-sky-400 border border-sky-800/60 px-1.5 py-0.2 rounded text-[10px]">
-                      {{ track.theme }}
-                    </span>
-                    <span v-if="track.duration" class="text-[10px] text-zinc-500 ml-1">{{ formatTime(track.duration) }}</span>
-                    <button @click.stop="openEditModal(track)" class="p-1 text-zinc-400 hover:text-amber-400 transition-colors" title="Editar Título, Categoria e Tema">
-                      <Edit2 class="w-3 h-3" />
-                    </button>
+                  <div class="track-cell-details">
+                    <div class="track-cell-header">
+                      <span class="track-cell-title truncate" :title="track.title">{{ track.title }}</span>
+                      <button
+                        @click.stop="openEditModal(track)"
+                        class="edit-icon-btn"
+                        title="Editar Título, Categoria, Tema e Capa"
+                      >
+                        <Edit2 class="icon-xs" />
+                      </button>
+                    </div>
+                    <div class="track-cell-tags">
+                      <span v-if="track.category" class="tag-category">{{ track.category }}</span>
+                      <span v-if="track.theme" class="tag-theme">{{ track.theme }}</span>
+                    </div>
+                    <div class="track-cell-footer">
+                      <span v-if="track.duration" class="track-duration">{{ formatTime(track.duration) }}</span>
+                      <button @click="addToPlaylist(track.id)" class="track-cell-add-btn" title="Adicionar à playlist">
+                        <Plus class="icon-xs" /> Fila
+                      </button>
+                    </div>
                   </div>
                 </div>
               </div>
@@ -208,109 +282,133 @@
           </div>
 
           <!-- Conteúdo Aba Biblioteca Global -->
-          <div v-else-if="activeTab === 'global'" class="space-y-3">
-            <div class="flex items-center gap-2">
-              <div class="relative flex-1">
-                <Search class="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-zinc-500" />
-                <input v-model="searchQuery" placeholder="Buscar na biblioteca..." class="w-full bg-zinc-700 rounded-lg pl-8 pr-3 py-1.5 text-xs outline-none focus:ring-1 focus:ring-emerald-500" />
+          <div v-else-if="activeTab === 'global'" class="tab-content">
+            <div class="global-search-row">
+              <div class="search-wrapper">
+                <Search class="icon-sm search-icon" />
+                <input
+                  v-model="searchQuery"
+                  placeholder="Buscar na biblioteca..."
+                  class="search-input"
+                />
               </div>
-              <button @click="fetchGlobalLibrary" :disabled="loadingGlobal" class="p-1.5 bg-zinc-700 hover:bg-zinc-600 rounded-lg text-zinc-400 hover:text-zinc-200 transition-colors" title="Atualizar biblioteca">
-                <RefreshCw class="w-3.5 h-3.5" :class="{ 'animate-spin': loadingGlobal }" />
+              <button
+                @click="fetchGlobalLibrary"
+                :disabled="loadingGlobal"
+                class="btn-icon refresh-btn"
+                title="Atualizar biblioteca"
+              >
+                <RefreshCw class="icon-sm" :class="{ 'animate-spin': loadingGlobal }" />
               </button>
             </div>
 
             <!-- Filtros por Categoria e Tema para Biblioteca Global -->
-            <div class="grid grid-cols-2 gap-1.5 text-xs">
-              <select v-model="globalCategoryFilter" class="bg-zinc-700/60 text-zinc-300 text-[11px] rounded px-2 py-1 outline-none border border-zinc-700">
+            <div class="two-col-grid">
+              <select v-model="globalCategoryFilter" class="select select-sm">
                 <option value="">Todas Categorias</option>
                 <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
               </select>
-              <select v-model="globalThemeFilter" class="bg-zinc-700/60 text-zinc-300 text-[11px] rounded px-2 py-1 outline-none border border-zinc-700">
+              <select v-model="globalThemeFilter" class="select select-sm">
                 <option value="">Todos Temas</option>
                 <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
               </select>
             </div>
 
-            <p class="text-xs text-zinc-500 mb-2">Todas as músicas salvas no servidor (clique para adicionar à playlist)</p>
-
-            <div v-if="loadingGlobal" class="text-zinc-500 text-xs text-center py-6">
+            <div v-if="loadingGlobal" class="empty-state">
               Carregando biblioteca...
             </div>
-            <div v-else-if="filteredGlobalTracks.length === 0" class="text-zinc-500 text-xs text-center py-6">
+            <div v-else-if="filteredGlobalTracks.length === 0" class="empty-state">
               Nenhuma música encontrada na biblioteca
             </div>
-            <div v-else class="space-y-1 max-h-64 overflow-y-auto pr-1">
-              <div v-for="track in filteredGlobalTracks" :key="track.id" class="flex items-center gap-1.5 py-1.5 px-2 rounded hover:bg-zinc-700/80 cursor-pointer text-xs group">
-                <div @click="addGlobalTrack(track)" class="flex items-center gap-1.5 flex-1 min-w-0">
-                  <Plus class="w-3.5 h-3.5 text-emerald-500 group-hover:scale-110 transition-transform shrink-0" />
-                  <span class="truncate font-medium text-zinc-200">{{ track.title }}</span>
+            <div v-else class="tracks-grid">
+              <div
+                v-for="track in filteredGlobalTracks"
+                :key="track.id"
+                class="track-cell"
+              >
+                <div class="track-cell-cover" @click="addGlobalTrack(track)" title="Clique para adicionar à playlist">
+                  <img v-if="track.coverUrl" :src="track.coverUrl" class="track-cell-img" alt="Capa" />
+                  <div v-else class="track-cell-placeholder">
+                    <Music class="icon-lg text-emerald" />
+                  </div>
+                  <div class="track-cell-overlay">
+                    <Plus class="icon-md" />
+                  </div>
                 </div>
-                <div class="flex items-center gap-1 shrink-0">
-                  <span v-if="track.category" class="bg-emerald-950 text-emerald-400 border border-emerald-800/60 px-1.5 py-0.2 rounded text-[10px]">
-                    {{ track.category }}
-                  </span>
-                  <span v-if="track.theme" class="bg-sky-950 text-sky-400 border border-sky-800/60 px-1.5 py-0.2 rounded text-[10px]">
-                    {{ track.theme }}
-                  </span>
-                  <span v-if="track.duration" class="text-[10px] text-zinc-500 ml-1">{{ formatTime(track.duration) }}</span>
-                  <button @click.stop="openEditModal(track)" class="p-1 text-zinc-400 hover:text-amber-400 transition-colors" title="Editar Título, Categoria e Tema">
-                    <Edit2 class="w-3 h-3" />
-                  </button>
+                <div class="track-cell-details">
+                  <div class="track-cell-header">
+                    <span class="track-cell-title truncate" :title="track.title">{{ track.title }}</span>
+                    <button
+                      @click.stop="openEditModal(track)"
+                      class="edit-icon-btn"
+                      title="Editar Título, Categoria, Tema e Capa"
+                    >
+                      <Edit2 class="icon-xs" />
+                    </button>
+                  </div>
+                  <div class="track-cell-tags">
+                    <span v-if="track.category" class="tag-category">{{ track.category }}</span>
+                    <span v-if="track.theme" class="tag-theme">{{ track.theme }}</span>
+                  </div>
+                  <div class="track-cell-footer">
+                    <span v-if="track.duration" class="track-duration">{{ formatTime(track.duration) }}</span>
+                    <button @click="addGlobalTrack(track)" class="track-cell-add-btn" title="Adicionar à playlist">
+                      <Plus class="icon-xs" /> Fila
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
           </div>
 
           <!-- Conteúdo Aba Sugestões de Ouvintes -->
-          <div v-else-if="activeTab === 'suggestions'" class="space-y-3">
-            <div class="flex items-center justify-between border-b border-zinc-700/60 pb-2">
-              <p class="text-xs font-medium text-amber-400 flex items-center gap-1.5">
-                <MessageSquare class="w-4 h-4" />
+          <div v-else-if="activeTab === 'suggestions'" class="tab-content">
+            <div class="suggestions-top-bar">
+              <p class="suggestions-heading">
+                <MessageSquare class="icon-md" />
                 Sugestões Enviadas por Ouvintes ({{ store.suggestions ? store.suggestions.length : 0 }})
               </p>
               <button
                 v-if="store.suggestions && store.suggestions.length > 0"
                 @click="clearSuggestions"
-                class="text-[11px] text-zinc-400 hover:text-red-400 transition-colors"
+                class="clear-sug-btn"
               >
                 Limpar todas
               </button>
             </div>
 
-            <div v-if="!store.suggestions || store.suggestions.length === 0" class="text-zinc-500 text-xs text-center py-8">
+            <div v-if="!store.suggestions || store.suggestions.length === 0" class="empty-state">
               Nenhuma sugestão enviada pelos ouvintes no momento.
             </div>
-            <div v-else class="space-y-2 max-h-80 overflow-y-auto pr-1">
+            <div v-else class="suggestions-scroll-list">
               <div
                 v-for="sug in store.suggestions"
                 :key="sug.id"
-                class="p-3 bg-zinc-900/80 border border-zinc-700/70 rounded-lg space-y-2"
+                class="suggestion-card"
               >
-                <div class="flex items-start justify-between gap-2">
-                  <div class="flex-1 min-w-0">
-                    <h4 class="text-xs font-semibold text-zinc-200 truncate">{{ sug.title }}</h4>
-                    <p class="text-[10px] text-zinc-400">
-                      Sugerido por: <strong class="text-emerald-400">{{ sug.suggestedBy }}</strong>
-                    </p>
-                    <p v-if="sug.url" class="text-[10px] text-zinc-500 truncate font-mono mt-0.5">
-                      URL: {{ sug.url }}
-                    </p>
-                  </div>
+                <div class="suggestion-card-body">
+                  <h4 class="suggestion-title truncate">{{ sug.title }}</h4>
+                  <p class="suggestion-by">
+                    Sugerido por: <strong class="text-emerald">{{ sug.suggestedBy }}</strong>
+                  </p>
+                  <p v-if="sug.url" class="suggestion-url truncate">
+                    URL: {{ sug.url }}
+                  </p>
                 </div>
 
-                <div class="flex items-center justify-end gap-2 pt-1 border-t border-zinc-800">
+                <div class="suggestion-actions">
                   <button
                     @click="rejectSuggestion(sug.id)"
-                    class="px-2.5 py-1 bg-red-950/60 hover:bg-red-900 border border-red-800/60 text-red-300 rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                    class="btn btn-danger-outline btn-sm"
                   >
-                    <X class="w-3 h-3" />
+                    <X class="icon-xs" />
                     Rejeitar
                   </button>
                   <button
                     @click="approveSuggestion(sug)"
-                    class="px-2.5 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-xs font-medium flex items-center gap-1 transition-colors"
+                    class="btn btn-primary btn-sm"
                   >
-                    <Check class="w-3 h-3" />
+                    <Check class="icon-xs" />
                     Aprovar & Tocar
                   </button>
                 </div>
@@ -319,44 +417,78 @@
           </div>
         </div>
 
-        <!-- Direita: Playlist -->
-        <div class="bg-zinc-800 rounded-lg p-4">
-          <h3 class="text-sm font-medium text-zinc-400 mb-3">Playlist Fila de Reprodução</h3>
-          <div v-if="store.playlist.length === 0" class="text-zinc-500 text-sm text-center py-4">
+        <!-- Coluna 2: Mixer de Sons de Fundo e Efeitos -->
+        <AudioMixer
+          :is-d-j="true"
+          :available-tracks="allAvailableTracks"
+          @update-mixer="handleUpdateMixer"
+        />
+
+        <!-- Coluna 3: Playlist Fila de Reprodução -->
+        <div class="card playlist-panel">
+          <h3 class="playlist-panel-title">Playlist Fila de Reprodução</h3>
+          <div v-if="store.playlist.length === 0" class="empty-state">
             Playlist vazia — adicione músicas do repositório ou da biblioteca global
           </div>
-          <div v-for="(track, i) in store.playlist" :key="track.id"
+          <div
+            v-for="(track, i) in store.playlist"
+            :key="track.id"
+            draggable="true"
+            @dragstart="onDragStart($event, i)"
+            @dragover.prevent="onDragOver($event, i)"
+            @dragleave="onDragLeave($event, i)"
+            @drop="onDrop($event, i)"
+            @dragend="onDragEnd"
             @click="playPlaylistTrack(track.id)"
-            class="flex items-center gap-2.5 py-2 px-2 border-b border-zinc-700/50 last:border-0 rounded-lg hover:bg-zinc-700/60 transition-colors cursor-pointer group"
-            :class="{ 'bg-emerald-950/40 border-emerald-800/40': i === 0 && store.state.isPlaying }">
-            
-            <button @click.stop="removeFromPlaylist(track.id)" class="text-red-400 hover:text-red-300 p-0.5 shrink-0" title="Remover da playlist">
-              <X class="w-3.5 h-3.5" />
-            </button>
-            
-            <div class="w-4 flex items-center justify-center shrink-0">
-              <Play v-if="i === 0 && store.state.isPlaying" class="w-3.5 h-3.5 text-emerald-400 animate-pulse" />
-              <span v-else class="text-xs text-zinc-500 group-hover:text-zinc-300 font-mono">{{ i + 1 }}</span>
+            class="dj-playlist-item"
+            :class="{
+              'is-playing': i === 0 && store.state.isPlaying,
+              'is-dragging': draggedIndex === i,
+              'is-drag-over': dragOverIndex === i && draggedIndex !== i
+            }"
+          >
+            <div class="drag-handle" title="Segure e arraste para reordenar">
+              <GripVertical class="icon-xs text-muted" />
             </div>
 
-            <div class="flex-1 min-w-0">
-              <div class="text-sm truncate" :class="i === 0 ? 'text-emerald-400 font-semibold' : 'text-zinc-200 group-hover:text-white'">
+            <button
+              @click.stop="removeFromPlaylist(track.id)"
+              class="remove-playlist-btn"
+              title="Remover da playlist"
+            >
+              <X class="icon-sm" />
+            </button>
+
+            <div class="playlist-num-col">
+              <Play v-if="i === 0 && store.state.isPlaying" class="icon-sm text-emerald animate-pulse" />
+              <span v-else class="playlist-num">{{ i + 1 }}</span>
+            </div>
+
+            <div class="playlist-thumb-box">
+              <img v-if="track.coverUrl" :src="track.coverUrl" class="playlist-thumb-img" alt="Capa" />
+              <div v-else class="playlist-thumb-placeholder">
+                <Music class="icon-xs text-muted" />
+              </div>
+            </div>
+
+            <div class="playlist-item-info">
+              <div class="playlist-item-title truncate" :class="{ first: i === 0 }">
                 {{ track.title }}
               </div>
-              <div v-if="track.category || track.theme" class="flex items-center gap-1 mt-0.5">
-                <span v-if="track.category" class="bg-emerald-950/80 text-emerald-400 border border-emerald-800/50 text-[9px] px-1 rounded">
-                  {{ track.category }}
-                </span>
-                <span v-if="track.theme" class="bg-sky-950/80 text-sky-400 border border-sky-800/50 text-[9px] px-1 rounded">
-                  {{ track.theme }}
-                </span>
+              <div v-if="track.category || track.theme" class="playlist-item-tags">
+                <span v-if="track.category" class="tag-category">{{ track.category }}</span>
+                <span v-if="track.theme" class="tag-theme">{{ track.theme }}</span>
               </div>
             </div>
 
-            <span v-if="track.duration" class="text-[10px] text-zinc-500 shrink-0">{{ formatTime(track.duration) }}</span>
+            <span v-if="track.duration" class="track-duration">{{ formatTime(track.duration) }}</span>
 
-            <button @click.stop="playPlaylistTrack(track.id)" class="p-1 rounded text-zinc-400 group-hover:text-emerald-400 hover:bg-zinc-600/50 transition-colors shrink-0" title="Tocar esta música agora">
-              <Play class="w-3.5 h-3.5" />
+            <button
+              @click.stop="playPlaylistTrack(track.id)"
+              class="play-now-btn"
+              title="Tocar esta música agora"
+            >
+              <Play class="icon-sm" />
             </button>
           </div>
         </div>
@@ -364,65 +496,106 @@
     </div>
 
     <!-- Modal de Edição de Metadados (Título, Categoria e Tema) -->
-    <div v-if="showEditModal" class="fixed inset-0 bg-black/70 flex items-center justify-center p-4 z-50">
-      <div class="bg-zinc-800 border border-zinc-700 rounded-xl p-5 max-w-md w-full space-y-4 shadow-xl">
-        <div class="flex items-center justify-between border-b border-zinc-700 pb-3">
-          <h3 class="text-sm font-bold text-zinc-100 flex items-center gap-2">
-            <Edit2 class="w-4 h-4 text-emerald-400" />
+    <div v-if="showEditModal" class="modal-overlay">
+      <div class="modal-box">
+        <div class="modal-header">
+          <h3 class="modal-title">
+            <Edit2 class="icon-md text-emerald" />
             Editar Mídia
           </h3>
-          <button @click="showEditModal = false" class="text-zinc-400 hover:text-zinc-200">
-            <X class="w-4 h-4" />
+          <button @click="showEditModal = false" class="btn-icon">
+            <X class="icon-md" />
           </button>
         </div>
 
-        <div class="space-y-3">
+        <div class="modal-form">
           <div>
-            <label class="block text-xs font-medium text-zinc-400 mb-1">Título da Música</label>
-            <input v-model="editTitle" type="text" class="w-full bg-zinc-700 text-zinc-100 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500" />
+            <label class="field-label">Título da Música</label>
+            <input v-model="editTitle" type="text" class="input" />
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-zinc-400 mb-1">Categoria</label>
-            <div class="flex gap-2">
-              <select v-model="editCategory" class="flex-1 bg-zinc-700 text-zinc-100 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500">
+            <label class="field-label">Imagem da Capa</label>
+            <div class="cover-input-container">
+              <div class="cover-input-row">
+                <input
+                  v-model="editCoverUrl"
+                  placeholder="URL da imagem (http://... ou selecione um arquivo)"
+                  type="text"
+                  class="input"
+                />
+                <button
+                  v-if="editCoverUrl"
+                  @click="editCoverUrl = ''"
+                  class="btn btn-secondary btn-sm"
+                  type="button"
+                >
+                  Limpar
+                </button>
+              </div>
+              <div class="cover-upload-row">
+                <label class="file-pick-label">
+                  <ImageIcon class="icon-xs" /> Selecionar imagem do computador
+                  <input
+                    ref="coverFileInputRef"
+                    type="file"
+                    accept="image/*"
+                    class="sr-only"
+                    @change="onCoverFileSelected"
+                  />
+                </label>
+              </div>
+              <div v-if="editCoverUrl" class="cover-preview-wrapper">
+                <img :src="editCoverUrl" alt="Preview da capa" class="cover-preview-img" />
+                <span class="cover-preview-hint">Pré-visualização da capa</span>
+              </div>
+            </div>
+          </div>
+
+          <div>
+            <label class="field-label">Categoria</label>
+            <div class="two-col-grid">
+              <select v-model="editCategory" class="input">
                 <option value="">-- Nenhuma Categoria --</option>
                 <option v-for="cat in categoriesList" :key="cat" :value="cat">{{ cat }}</option>
               </select>
-              <input v-model="editCategory" placeholder="ou digite customizada..." type="text" class="flex-1 bg-zinc-700 text-zinc-100 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500" />
+              <input v-model="editCategory" placeholder="ou digite customizada..." type="text" class="input" />
             </div>
           </div>
 
           <div>
-            <label class="block text-xs font-medium text-zinc-400 mb-1">Tema</label>
-            <div class="flex gap-2">
-              <select v-model="editTheme" class="flex-1 bg-zinc-700 text-zinc-100 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500">
+            <label class="field-label">Tema</label>
+            <div class="two-col-grid">
+              <select v-model="editTheme" class="input">
                 <option value="">-- Nenhum Tema --</option>
                 <option v-for="thm in themesList" :key="thm" :value="thm">{{ thm }}</option>
               </select>
-              <input v-model="editTheme" placeholder="ou digite customizado..." type="text" class="flex-1 bg-zinc-700 text-zinc-100 text-xs rounded-lg px-3 py-2 outline-none focus:ring-1 focus:ring-emerald-500" />
+              <input v-model="editTheme" placeholder="ou digite customizado..." type="text" class="input" />
             </div>
           </div>
         </div>
 
-        <div class="flex justify-end gap-2 pt-2 border-t border-zinc-700">
-          <button @click="showEditModal = false" class="px-3 py-1.5 bg-zinc-700 hover:bg-zinc-600 text-zinc-300 rounded-lg text-xs font-medium transition-colors">
+        <div class="modal-footer">
+          <button @click="showEditModal = false" class="btn btn-secondary">
             Cancelar
           </button>
-          <button @click="handleSaveEdit" :disabled="savingEdit" class="px-4 py-1.5 bg-emerald-600 hover:bg-emerald-500 disabled:bg-zinc-600 text-white rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5">
-            <Check class="w-3.5 h-3.5" />
+          <button @click="handleSaveEdit" :disabled="savingEdit" class="btn btn-primary">
+            <Check class="icon-sm" />
             {{ savingEdit ? 'Salvando...' : 'Salvar Alterações' }}
           </button>
         </div>
       </div>
     </div>
+
+    <!-- Barra Fixa do Player na Parte Inferior (Estilo YouTube Music) -->
+    <Player @toggle-play="handleTogglePlay" />
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play, Disc, MessageSquare, Check, Edit2, Tag, Filter } from 'lucide-vue-next'
+import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play, Disc, MessageSquare, Check, Edit2, Tag, Filter, Music, Image as ImageIcon, GripVertical } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
 import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, saveYouTubeCookies, getCookiesStatus, getStation, updateTrackMetadata } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
@@ -472,9 +645,38 @@ const editingTrack = ref(null)
 const editTitle = ref('')
 const editCategory = ref('')
 const editTheme = ref('')
+const editCoverUrl = ref('')
+const coverFileInputRef = ref(null)
 const savingEdit = ref(false)
 
-const categoriesList = ['Rock', 'Pop', 'Sertanejo', 'MPB', 'Eletrônica', 'Gospel', 'Funk', 'Hip-Hop', 'Reggae', 'Efeitos / Trilhas', 'Outros']
+function onCoverFileSelected(e) {
+  const file = e.target.files[0]
+  if (!file) return
+  const reader = new FileReader()
+  reader.onload = (evt) => {
+    editCoverUrl.value = evt.target.result
+  }
+  reader.readAsDataURL(file)
+}
+
+const categoriesList = [
+  'Rock',
+  'Nu-Metal',
+  'Maidcore',
+  'Pop',
+  'K-Pop',
+  'Jazz',
+  'Blues',
+  'Sertanejo',
+  'MPB',
+  'Eletrônica',
+  'Gospel',
+  'Funk',
+  'Hip-Hop',
+  'Reggae',
+  'Efeitos / Trilhas',
+  'Outros',
+]
 const themesList = ['Terror', 'Combate', 'Investigação', 'Calma', 'Tensão', 'Dramatica']
 
 const filteredRepoTracks = computed(() => {
@@ -630,6 +832,7 @@ function openEditModal(track) {
   editTitle.value = track.title || ''
   editCategory.value = track.category || ''
   editTheme.value = track.theme || ''
+  editCoverUrl.value = track.coverUrl || ''
   showEditModal.value = true
 }
 
@@ -640,7 +843,12 @@ async function handleSaveEdit() {
     const updated = await updateTrackMetadata(
       store.stationId,
       editingTrack.value.id,
-      { title: editTitle.value, category: editCategory.value, theme: editTheme.value },
+      {
+        title: editTitle.value,
+        category: editCategory.value,
+        theme: editTheme.value,
+        coverUrl: editCoverUrl.value
+      },
       store.djToken
     )
     const index = store.repository.findIndex(t => t.id === editingTrack.value.id)
@@ -677,6 +885,60 @@ function playPlaylistTrack(trackId) {
 
 function removeFromPlaylist(trackId) {
   send({ type: 'REMOVE_FROM_PLAYLIST', data: { trackId } })
+}
+
+const draggedIndex = ref(null)
+const dragOverIndex = ref(null)
+
+function onDragStart(e, index) {
+  if (e.target.closest('button')) {
+    e.preventDefault()
+    return
+  }
+  draggedIndex.value = index
+  e.dataTransfer.effectAllowed = 'move'
+  e.dataTransfer.setData('text/plain', index.toString())
+}
+
+function onDragOver(e, index) {
+  e.preventDefault()
+  e.dataTransfer.dropEffect = 'move'
+  if (dragOverIndex.value !== index) {
+    dragOverIndex.value = index
+  }
+}
+
+function onDragLeave(e, index) {
+  if (dragOverIndex.value === index) {
+    dragOverIndex.value = null
+  }
+}
+
+function onDrop(e, targetIndex) {
+  e.preventDefault()
+  const from = draggedIndex.value
+  const to = targetIndex
+  dragOverIndex.value = null
+  draggedIndex.value = null
+
+  if (from === null || from === undefined || from === to) return
+
+  // Atualização otimista local imediata
+  const updatedPlaylist = [...store.playlist]
+  const [movedTrack] = updatedPlaylist.splice(from, 1)
+  updatedPlaylist.splice(to, 0, movedTrack)
+  store.setPlaylist(updatedPlaylist)
+
+  // Envia ao servidor WebSocket para sincronizar todas as sessões
+  send({
+    type: 'REORDER_PLAYLIST',
+    data: { fromIndex: from, toIndex: to }
+  })
+}
+
+function onDragEnd() {
+  draggedIndex.value = null
+  dragOverIndex.value = null
 }
 
 function approveSuggestion(sug) {
@@ -745,3 +1007,859 @@ function leave() {
   router.push('/')
 }
 </script>
+
+<style scoped>
+.brand-name {
+  font-weight: 700;
+  color: var(--emerald-500);
+}
+
+.amber-hover:hover {
+  color: var(--amber-400);
+}
+
+.copy-btn:hover {
+  color: var(--emerald-400);
+}
+
+.station-actions-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: stretch;
+  text-align: left;
+}
+
+@media (min-width: 768px) and (max-width: 1099px) {
+  .station-actions-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .station-actions-grid .station-code-block {
+    grid-column: span 2;
+  }
+}
+
+@media (min-width: 1100px) {
+  .station-actions-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.station-code-block {
+  display: flex;
+  flex-direction:row !important;
+  justify-content: center;
+  align-items: center;
+  text-align: center;
+  padding: 0.2rem 0.2rem;
+  min-height: 100%;
+}
+
+.station-code-sub {
+  font-size: 0.6875rem;
+  color: var(--zinc-500);
+  margin-top: 0.25rem;
+}
+
+.station-action-block {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.station-actions-grid .yt-section {
+  border-top: none;
+  padding-top: 0;
+}
+
+.dj-main {
+  flex: 1;
+  width: 100%;
+  margin: 0 auto;
+  padding: 1rem 1rem 6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+}
+
+.dj-three-col {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 1rem;
+  align-items: start;
+}
+
+@media (min-width: 768px) and (max-width: 1199px) {
+  .dj-three-col {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .dj-three-col {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+.left-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.dj-tabs {
+  margin-bottom: 1rem;
+}
+
+.suggestions-count-badge {
+  margin-left: 0.25rem;
+  background-color: var(--amber-400);
+  color: var(--zinc-950);
+  font-weight: 700;
+  font-size: 0.625rem;
+  padding: 0.0625rem 0.375rem;
+  border-radius: var(--radius-full);
+}
+
+.tab-content {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.subsection-title {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+}
+
+.subsection-title-icon {
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+}
+
+.upload-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.file-meta-box {
+  background-color: rgba(24, 24, 27, 0.6);
+  padding: 0.5rem;
+  border-radius: var(--radius-lg);
+  border: 1px solid rgba(63, 63, 70, 0.6);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.selected-filename {
+  display: block;
+  font-size: 0.75rem;
+  color: var(--zinc-200);
+  font-weight: 500;
+}
+
+.two-col-grid {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 0.5rem;
+}
+
+.flex-end {
+  display: flex;
+  justify-content: flex-end;
+}
+
+.error-text {
+  font-size: 0.75rem;
+  color: var(--red-400);
+}
+
+.yt-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+.yt-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.yt-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.yt-input {
+  flex: 1;
+  padding: 0.375rem 0.75rem;
+}
+
+.yt-input:focus {
+  border-color: var(--red-500);
+  box-shadow: 0 0 0 1px var(--red-500);
+}
+
+.cookie-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.75rem;
+  padding-top: 0.25rem;
+}
+
+.cookie-status {
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  font-size: 0.8rem;
+}
+
+.cookie-status.active {
+  color: var(--emerald-400);
+}
+
+.cookie-status.inactive {
+  color: var(--zinc-500);
+}
+
+.cookie-dot {
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: var(--radius-full);
+}
+
+.cookie-dot.active {
+  background-color: var(--emerald-500);
+}
+
+.cookie-dot.inactive {
+  background-color: var(--zinc-600);
+}
+
+.cookie-toggle-btn {
+  font-size: 0.6875rem;
+  color: var(--zinc-400);
+  text-decoration: underline;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+}
+
+.cookie-toggle-btn:hover {
+  color: var(--zinc-200);
+}
+
+.cookie-card {
+  padding: 0.75rem;
+  background-color: rgba(24, 24, 27, 0.9);
+  border: 1px solid rgba(63, 63, 70, 0.8);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.625rem;
+  margin-top: 0.25rem;
+}
+
+.cookie-card-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--zinc-200);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.cookie-card-desc {
+  font-size: 0.6875rem;
+  color: var(--zinc-400);
+  line-height: 1.3;
+}
+
+.code-amber {
+  color: var(--amber-300);
+  font-family: var(--font-mono);
+}
+
+.cookie-inputs {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cookie-card-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding-top: 0.25rem;
+}
+
+.cookie-msg {
+  font-size: 0.6875rem;
+}
+
+.repo-list-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px solid rgba(63, 63, 70, 0.5);
+}
+
+.filter-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+}
+
+.select-sm {
+  font-size: 0.8rem;
+  padding: 0.5rem 0.5rem;
+}
+
+/* Music Grid Layout */
+.tracks-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
+  gap: 0.5rem;
+  max-height: 24rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.track-cell {
+  background-color: rgba(24, 24, 27, 0.7);
+  border: 1px solid rgba(63, 63, 70, 0.5);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  transition: transform 0.15s ease, border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.track-cell:hover {
+  transform: translateY(-2px);
+  border-color: rgba(16, 185, 129, 0.4);
+  background-color: rgba(39, 39, 42, 0.85);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.35);
+}
+
+.track-cell-cover {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  background-color: rgba(9, 9, 11, 0.8);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.track-cell-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.track-cell:hover .track-cell-img {
+  transform: scale(1.05);
+}
+
+.track-cell-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(135deg, rgba(39, 39, 42, 0.6), rgba(24, 24, 27, 0.9));
+}
+
+.track-cell-overlay {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  color: #ffffff;
+}
+
+.track-cell-cover:hover .track-cell-overlay {
+  opacity: 1;
+}
+
+.track-cell-details {
+  padding: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  flex: 1;
+}
+
+.track-cell-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem;
+}
+
+.track-cell-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--zinc-200);
+}
+
+.track-cell-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+}
+
+.track-cell-footer {
+  margin-top: auto;
+  padding-top: 0.375rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-top: 1px solid rgba(63, 63, 70, 0.3);
+}
+
+.track-cell-add-btn {
+  font-size: 0.6875rem;
+  font-weight: 500;
+  color: var(--emerald-400);
+  background-color: rgba(16, 185, 129, 0.1);
+  border: 1px solid rgba(16, 185, 129, 0.25);
+  border-radius: var(--radius-sm);
+  padding: 0.125rem 0.375rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.125rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, color 0.15s ease;
+}
+
+.track-cell-add-btn:hover {
+  background-color: var(--emerald-600);
+  color: #ffffff;
+}
+
+.tracks-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  max-height: 16rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.track-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.375rem 0.5rem;
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  font-size: 0.75rem;
+  transition: background-color 0.15s ease;
+}
+
+.track-row:hover {
+  background-color: rgba(63, 63, 70, 0.8);
+}
+
+.track-row-main {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  flex: 1;
+  min-width: 0;
+}
+
+.track-plus {
+  transition: transform 0.15s ease;
+}
+
+.track-row:hover .track-plus {
+  transform: scale(1.15);
+}
+
+.track-row-title {
+  font-weight: 500;
+  color: var(--zinc-200);
+}
+
+.track-row-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  flex-shrink: 0;
+}
+
+.track-duration {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+  margin-left: 0.25rem;
+}
+
+.edit-icon-btn {
+  padding: 0.25rem;
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+  transition: color 0.15s ease;
+}
+
+.edit-icon-btn:hover {
+  color: var(--amber-400);
+}
+
+.global-search-row {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.refresh-btn {
+  background-color: var(--zinc-700);
+}
+
+.helper-hint {
+  font-size: 0.75rem;
+  color: var(--zinc-500);
+}
+
+.suggestions-top-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.6);
+  padding-bottom: 0.5rem;
+}
+
+.suggestions-heading {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--amber-400);
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+}
+
+.clear-sug-btn {
+  font-size: 0.6875rem;
+  color: var(--zinc-400);
+  transition: color 0.15s ease;
+}
+
+.clear-sug-btn:hover {
+  color: var(--red-400);
+}
+
+.suggestions-scroll-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  max-height: 20rem;
+  overflow-y: auto;
+  padding-right: 0.25rem;
+}
+
+.suggestion-card {
+  padding: 0.75rem;
+  background-color: rgba(24, 24, 27, 0.8);
+  border: 1px solid rgba(63, 63, 70, 0.7);
+  border-radius: var(--radius-lg);
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.suggestion-card-body {
+  min-width: 0;
+}
+
+.suggestion-title {
+  font-size: 0.75rem;
+  font-weight: 600;
+  color: var(--zinc-200);
+}
+
+.suggestion-by {
+  font-size: 0.625rem;
+  color: var(--zinc-400);
+}
+
+.suggestion-url {
+  font-size: 0.625rem;
+  color: var(--zinc-500);
+  font-family: var(--font-mono);
+  margin-top: 0.125rem;
+}
+
+.suggestion-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding-top: 0.25rem;
+  border-top: 1px solid var(--zinc-800);
+}
+
+/* Playlist Panel */
+.playlist-panel-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+}
+
+.dj-playlist-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem;
+  border-bottom: 1px solid rgba(63, 63, 70, 0.5);
+  border-radius: var(--radius-lg);
+  cursor: grab;
+  transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.15s ease, opacity 0.15s ease;
+  user-select: none;
+}
+
+.dj-playlist-item:active {
+  cursor: grabbing;
+}
+
+.dj-playlist-item.is-dragging {
+  opacity: 0.35;
+  background-color: rgba(63, 63, 70, 0.4);
+  border: 1px dashed var(--emerald-400);
+  transform: scale(0.98);
+}
+
+.dj-playlist-item.is-drag-over {
+  border-top: 2px solid var(--emerald-400);
+  background-color: rgba(16, 185, 129, 0.12);
+  transform: translateY(2px);
+}
+
+.drag-handle {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--zinc-500);
+  cursor: grab;
+  padding: 0.125rem;
+  border-radius: var(--radius-sm);
+  transition: color 0.15s ease;
+  flex-shrink: 0;
+}
+
+.drag-handle:active {
+  cursor: grabbing;
+}
+
+.dj-playlist-item:hover .drag-handle {
+  color: var(--zinc-300);
+}
+
+.dj-playlist-item:last-child {
+  border-bottom: 0;
+}
+
+.dj-playlist-item:hover {
+  background-color: rgba(63, 63, 70, 0.6);
+}
+
+.dj-playlist-item.is-playing {
+  background-color: rgba(2, 44, 34, 0.4);
+  border-color: rgba(6, 95, 70, 0.4);
+}
+
+.remove-playlist-btn {
+  color: var(--red-400);
+  padding: 0.125rem;
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.remove-playlist-btn:hover {
+  color: var(--red-300);
+}
+
+.playlist-num-col {
+  width: 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.playlist-num {
+  font-size: 0.75rem;
+  color: var(--zinc-500);
+  font-family: var(--font-mono);
+}
+
+.dj-playlist-item:hover .playlist-num {
+  color: var(--zinc-300);
+}
+
+.playlist-item-info {
+  flex: 1;
+  min-width: 0;
+}
+
+.playlist-item-title {
+  font-size: 0.875rem;
+  color: var(--zinc-200);
+}
+
+.playlist-item-title.first {
+  color: var(--emerald-400);
+  font-weight: 600;
+}
+
+.dj-playlist-item:hover .playlist-item-title:not(.first) {
+  color: #ffffff;
+}
+
+.playlist-item-tags {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.125rem;
+}
+
+.play-now-btn {
+  padding: 0.25rem;
+  border-radius: var(--radius-sm);
+  color: var(--zinc-400);
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  transition: color 0.15s ease, background-color 0.15s ease;
+}
+
+.dj-playlist-item:hover .play-now-btn {
+  color: var(--emerald-400);
+}
+
+.play-now-btn:hover {
+  background-color: rgba(82, 82, 91, 0.5);
+}
+
+/* Modal Form */
+.modal-form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.field-label {
+  display: block;
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: var(--zinc-400);
+  margin-bottom: 0.25rem;
+}
+
+/* Playlist Cover Icon */
+.playlist-thumb-box {
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  background-color: var(--zinc-800);
+  border: 1px solid var(--zinc-700);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.playlist-thumb-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.playlist-thumb-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Modal Cover Input & Preview */
+.cover-input-container {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.cover-input-row {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.cover-upload-row {
+  display: flex;
+  align-items: center;
+}
+
+.file-pick-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  font-size: 0.75rem;
+  color: var(--zinc-300);
+  background-color: rgba(63, 63, 70, 0.6);
+  border: 1px dashed var(--zinc-600);
+  border-radius: var(--radius-md);
+  padding: 0.375rem 0.625rem;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.file-pick-label:hover {
+  background-color: rgba(63, 63, 70, 0.9);
+  border-color: var(--emerald-400);
+  color: #ffffff;
+}
+
+.cover-preview-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.5rem;
+  background-color: rgba(24, 24, 27, 0.6);
+  border: 1px solid var(--zinc-700);
+  border-radius: var(--radius-md);
+}
+
+.cover-preview-img {
+  width: 3.5rem;
+  height: 3.5rem;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--zinc-600);
+}
+
+.cover-preview-hint {
+  font-size: 0.75rem;
+  color: var(--zinc-400);
+}
+</style>

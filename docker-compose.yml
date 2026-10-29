@@ -7,10 +7,11 @@ services:
 
   radiosync:
     build: .
+    image: lpfonts/radiosync:latest
     container_name: radiosync
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8080:8080"
+      - "${HOST_PORT:-8080}:8080"
     environment:
       - PORT=8080
       - MUSIC_DIR=/app/musicas
@@ -23,4 +24,3 @@ services:
       - ./data:/app/data
     depends_on:
       - bgutil-provider
-
