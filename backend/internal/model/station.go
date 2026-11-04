@@ -532,7 +532,9 @@ func ExtractYouTubeURL(sug SongSuggestion) string {
 		return strings.Contains(sLower, "youtube.com") || strings.Contains(sLower, "youtu.be")
 	}
 
-	if isYT(raw) {
+	// Só trata o texto inteiro como URL se ele não tiver espaços; caso
+	// contrário, procura o link palavra por palavra (laço abaixo).
+	if isYT(raw) && !strings.ContainsAny(raw, " \t\n") {
 		if !strings.HasPrefix(raw, "http://") && !strings.HasPrefix(raw, "https://") {
 			return "https://" + raw
 		}
