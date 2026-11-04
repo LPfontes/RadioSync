@@ -151,9 +151,9 @@ Requer cabeçalho Authorization: Bearer \<djToken\>.
 > * **Ciclo do DJ:** Cria a rádio na API, armazena o token, carrega o repositório, abre a conexão WebSocket de administrador e faz upload de arquivos via POST. Quando finalizado, o DJ envia comandos JSON pelo WebSocket para inserir as faixas na playlist.  
 > * **Ciclo do Ouvinte:** Acessa a URL pública da rádio, valida a existência da sala via GET, abre a conexão WebSocket padrão e começa a receber a janela das Top 3 músicas (Payload) junto do estado do player, acionando as reproduções locais.
 
-Como sou uma IA baseada em texto, não tenho acesso para editar seu documento diretamente. No entanto, preparei o conteúdo abaixo formatado para que você possa copiar e colar facilmente no seu arquivo, antes da seção de Roadmap.
+## **7. Stack Tecnológico e Pacotes**
 
-**7\. Stack Tecnológico e Pacotes7.1 Backend (Go)**
+### **7.1 Backend (Go)**
 
 * [**github.com/gorilla/websocket**](https://github.com/gorilla/websocket)**:** Para o Upgrade da requisição HTTP e gerenciamento dos eventos WebSocket em tempo real.  
 * [**github.com/go-chi/chi/v5**](https://github.com/go-chi/chi/v5)**:** Roteador HTTP minimalista e muito rápido, compatível com os handlers nativos do Go, para criar o grupo de rotas `/api/v1/` e injetar middlewares.  
@@ -162,7 +162,7 @@ Como sou uma IA baseada em texto, não tenho acesso para editar seu documento di
 * [**github.com/golang-jwt/jwt/v5**](https://github.com/golang-jwt/jwt/v5)**:** Para emitir e validar o `djToken` nas rotas protegidas.  
 * [**github.com/joho/godotenv**](https://github.com/joho/godotenv)**:** Para gerenciar variáveis de ambiente de forma limpa.
 
-**7.2 Frontend (Vue 3\)**
+### **7.2 Frontend (Vue 3)**
 
 * **`vite`:** Bundler extremamente rápido, ideal para a Composition API.  
 * **`vue-router (v4)`:** Para gerenciar o fluxo da Single Page Application (SPA), lidando com as rotas dinâmicas como `/radio/:stationId`.  
