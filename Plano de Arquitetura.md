@@ -1,187 +1,170 @@
-# **Plano de Projeto: Plataforma de Rádio Web Sincronizada**
+# **Plano de Projeto: Plataforma de Rádio Web Sincronizada (RadioSync)**
 
-## **1\. Visão Geral do Projeto**
+## **1. Visão Geral do Projeto**
 
-Este documento descreve a arquitetura e o planejamento para a construção de uma plataforma web de rádio interativa, semelhante a serviços de escuta sincronizada. A premissa central é permitir que usuários criem "estações" (salas) onde um DJ controla a playlist e a reprodução, enquanto todos os ouvintes conectados escutam a mesma música simultaneamente. Para minimizar os custos e a carga no servidor, a transferência do áudio é feita por download estático no cliente, enquanto a sincronização do estado da reprodução é mantida via WebSockets.
+Este documento descreve a arquitetura e o planejamento da **RadioSync**, uma plataforma web de rádio interativa de escuta sincronizada. A premissa central é permitir que usuários criem "estações" (salas) onde um DJ controla a playlist, o mixer de efeitos sonoros e a reprodução, enquanto todos os ouvintes conectados escutam a mesma música simultaneamente, podendo enviar sugestões em tempo real. Para minimizar os custos e a carga no servidor, a transferência do áudio é feita por download estático no cliente, enquanto a sincronização do estado da reprodução é mantida via WebSockets.
 
-## **2\. Arquitetura do Sistema**
+---
 
-> * **Frontend (Vue 3):** Interface de usuário construída com Vue 3 (Composition API). Gerencia a reprodução de áudio localmente via HTML5 Audio API e responde aos eventos recebidos pelo WebSocket para manter o áudio sincronizado.  
-> * **Backend (Go):** Servidor de alta performance e concorrência. Responsável por servir os arquivos estáticos de áudio e gerenciar as conexões WebSocket (Gorilla WebSockets), o estado das salas e a lógica de permissões.  
-> * **Formato de Áudio (Opus):** Todas as faixas serão armazenadas e servidas no formato .opus (container Ogg). Isso garante alta fidelidade sonora com um consumo de banda significativamente menor (baixo bitrate) e transições sem falhas (gapless playback) entre as músicas da playlist.
+## **2. Arquitetura do Sistema**
 
-## **3\. Estrutura de Dados e Estado**
+### **2.1 Arquitetura Atual (Monolito Modular)**
 
-O servidor Go manterá o estado de cada estação em memória, utilizando Mutexes (sync.RWMutex) para garantir segurança na concorrência, mapeando as conexões e o status da reprodução:
+> * **Frontend (Vue 3 + Vanilla CSS):** Single Page Application construída com Vue 3 (Composition API), Vite, Pinia e estilização em Vanilla CSS com layout inspirado no YouTube Music (player fixo inferior, suporte a capas/thumbnails, grid de músicas e *drag-and-drop* na playlist). Gerencia a reprodução de áudio localmente via HTML5 Audio API, o mixer de áudio ambiente e responde aos eventos recebidos pelo WebSocket.
+> * **Backend (Go):** Servidor concorrente que gerencia a API REST (`/api/v1`), as conexões WebSocket por estação (`gorilla/websocket`), a transcodificação de áudio com **FFmpeg**, a importação de faixas do YouTube via **yt-dlp** (integrado ao `bgutil-ytdlp-pot-provider`) e a persistência atômica em disco.
+> * **Formato de Áudio (Opus):** Todas as faixas são transcodificadas e servidas no formato `.opus` (container Ogg, 96 kbps VBR). Isso garante alta fidelidade sonora com baixo consumo de banda e transições suaves entre as músicas da playlist (ADR-0004).
 
-| Estrutura / Entidade | Descrição | Principais Atributos   |
-| :---- | :---- | :---- |
-| **PlaybackState** | Define o status exato da música em execução. | IsPlaying (booleano), StartedAt (timestamp em ms), SeekOffset (segundos pulados), CurrentSong (URL da música .opus). |
-| **Station** | Representa uma sala ativa na plataforma. | ID, DJ (ID do usuário no controle), Clients (mapa de conexões), Broadcast (canal Go para mensagens), State (instância de PlaybackState), Repository (todas as músicas upadas), Playlist (a fila em si). |
+### **2.2 Evolução para Arquitetura Distribuída (Entregas 2 e 3)**
 
-### **3.1 Gestão de Repositório vs. Playlist**
+Para escalar horizontalmente conexões WebSocket, isolar o uso intensivo de CPU do FFmpeg/yt-dlp e eliminar pontos únicos de falha, o sistema evolui incrementalmente por meio do padrão **Strangler Fig** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md)) com os seguintes containers ([C4 Nível 2](docs/c4/02-containers.md)):
 
-Para separar as músicas disponíveis das músicas que efetivamente vão tocar, a Station mantém dois locais distintos:
+| Componente | Tecnologia | Papel na Arquitetura | ADR |
+| :--- | :--- | :--- | :--- |
+| **API Gateway / Load Balancer** | Traefik v3 | Ponto único de entrada, roteamento incremental (Strangler Fig), *rate limiting* e métricas. | [ADR-0003](docs/adr/0003-migracao-strangler-fig.md), [ADR-0005](docs/adr/0005-api-gateway-seguranca.md) |
+| **Sync Service (N réplicas)** | Go + WebSocket | Mantém conexões WebSocket dos ouvintes e realiza *fan-out* de eventos entre réplicas via Redis Pub/Sub. | [ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md), [ADR-0004](docs/adr/0004-sincronizacao-client-side-timestamp.md) |
+| **Media API + Media Worker** | Go + FFmpeg + yt-dlp | Desacopla upload e download do YouTube em jobs assíncronos via fila, com *Retry*, *DLQ* e *Circuit Breaker*. | [ADR-0002](docs/adr/0002-transcodificacao-assincrona-fila.md) |
+| **Station Service** | Go | CRUD de estações, playlist, biblioteca global de faixas e emissão/validação de tokens JWT. | [ADR-0006](docs/adr/0006-persistencia-postgres-minio.md) |
+| **Estado Quente + Mensageria** | Redis 7 | Armazena o `PlaybackState` ativo de baixa latência e opera os canais Pub/Sub `station:{id}:events`. | [ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md) |
+| **Fila de Transcodificação** | RabbitMQ 3.13 | Fila `media.transcode` e Dead-Letter Queue (`media.transcode.dlq`) com confirmação manual (*ack*). | [ADR-0002](docs/adr/0002-transcodificacao-assincrona-fila.md) |
+| **Persistência Durável e Objetos** | PostgreSQL 16 + MinIO (S3) | Postgres armazena estações e catálogo relacional de faixas; MinIO armazena os arquivos `.opus` compartilhados. | [ADR-0006](docs/adr/0006-persistencia-postgres-minio.md) |
+| **Observabilidade** | Prometheus + Grafana | Coleta de métricas de latência (p95), conexões WebSocket ativas, taxa de erros e profundidade de fila. | — |
 
-> * **Repositório:** O "estoque" da rádio. Contém todas as músicas (convertidas e com os metadados lidos) enviadas pelo DJ para o servidor via upload.  
-> * **Playlist:** A fila de reprodução (sequência de faixas). É alimentada a partir das músicas que já existem no repositório.
+---
 
-## **4\. Sincronização de Áudio Client-Side**
+## **3. Estrutura de Dados e Estado**
 
-Para garantir que todos os ouvintes estejam escutando a música no mesmo segundo, o cálculo de sincronização é feito ativamente no cliente (Vue), compensando os atrasos de rede usando o timestamp base recebido do servidor Go:
+O servidor mantém e sincroniza as seguintes estruturas principais (`backend/internal/model`):
 
-> 1. O DJ clica no play, e o servidor Go registra o timestamp exato desse evento (StartedAt \= time.Now().UnixMilli()) e faz o broadcast para a sala.  
-> 2. O cliente recebe a mensagem e inicia o cálculo de onde o player deveria estar:
+| Estrutura / Entidade | Descrição | Principais Atributos |
+| :--- | :--- | :--- |
+| **PlaybackState** | Define o status exato da música em execução. | `IsPlaying` (booleano), `StartedAt` (timestamp Unix em ms), `SeekOffset` (segundos acumulados), `CurrentSong` (URL da música `.opus`), `Duration` (segundos). |
+| **Track** | Representa uma faixa de áudio convertida. | `ID` (UUID), `Title`, `URL` (`/musicas/<uuid>.opus`), `Filename`, `Duration`, `Thumbnail` (capa da faixa / miniatura do YouTube). |
+| **SongSuggestion** | Sugestão enviada por ouvintes para o DJ. | `ID`, `TrackID`, `Title`, `URL`, `SuggestedBy`, `CreatedAt`, `Status` (`pending`, `approved`, `rejected`). |
+| **MixerChannel** | Canal do mixer de efeitos sonoros/ambiente. | `ID`, `Name`, `Type` (`preset` ou `track`), `PresetKey` (`rain`, `thunder`, `cafe`, `fireplace`, `waves`, `wind`, `forest`, etc.), `TrackURL`, `Volume`, `IsPlaying`, `Muted`, `Loop`. |
+| **Station** | Representa uma sala ativa na plataforma. | `ID` (código curto de 6 caracteres), `DJ`, `Hub` (gerenciador WebSocket), `State` (`PlaybackState`), `Repository`, `Playlist`, `Suggestions`, `Mixer`. |
 
->    Posição Atual \= ((Timestamp Atual do Cliente \- StartedAt) / 1000\) \+ SeekOffset
+### **3.1 Gestão de Repositório, Biblioteca Global e Playlist**
 
-> 3. O cliente avalia a diferença entre a posição calculada e a propriedade currentTime da tag de áudio. Se a diferença for superior a um limite (ex: 1.0 ou 1.5 segundos), o player força o currentTime atualizando-o para corrigir a dessincronização.
+> * **Repositório da Estação:** Contém as músicas enviadas (via upload ou YouTube) para aquela estação.
+> * **Biblioteca Global (`/api/v1/library`):** Catálogo unificado de todas as faixas `.opus` disponíveis no servidor, permitindo que qualquer estação reutilize músicas já convertidas sem retrabalho de transcodificação.
+> * **Playlist:** A fila de reprodução ativa da estação, suportando adição, remoção, reprodução imediata de faixa específica e reordenação via *drag-and-drop*.
 
-## **5\. Implementação Técnica Principal**
+### **3.2 Persistência de Dados**
+
+> * **Situação Atual (`handler/persist.go`):** Salvamento periódico (a cada 30s) e por eventos das estações em `stations.json`, catálogo de nomes em `track_names.json` e cache de downloads do YouTube em `yt_cache.json`, utilizando escrita em arquivo temporário seguida de substituição atômica (*atomic rename*).
+> * **Arquitetura Distribuída ([ADR-0006](docs/adr/0006-persistencia-postgres-minio.md)):** Migração para **Polyglot Persistence** com Redis (estado quente do player), PostgreSQL (estações e catálogo relacional de faixas) e MinIO (armazenamento S3 dos arquivos `.opus`).
+
+---
+
+## **4. Sincronização de Áudio Client-Side ([ADR-0004](docs/adr/0004-sincronizacao-client-side-timestamp.md))**
+
+Para garantir que todos os ouvintes escutem a música no mesmo instante sem trafegar stream contínuo de áudio pelo servidor, o cálculo de posição é feito no cliente (Vue) com base em timestamps:
+
+> 1. O DJ aciona `PLAY` ou `SEEK`, e o servidor Go registra o timestamp exato (`StartedAt = time.Now().UnixMilli()`) junto ao `SeekOffset`, transmitindo o `STATE_UPDATE` via WebSocket.
+> 2. O cliente calcula a posição esperada da faixa:
+>    $$\text{Posição Atual} = \frac{\text{Timestamp Atual} - \text{StartedAt}}{1000} + \text{SeekOffset}$$
+> 3. O cliente também pode solicitar sincronização pontual enviando `SYNC_REQUEST`, recebendo do servidor a posição exata calculada por `calcPosition()` e o estado atual do mixer.
+> 4. Se a diferença (*drift*) entre a posição calculada e `audio.currentTime` ultrapassar a tolerância (1,5s), o player corrige `audio.currentTime` automaticamente.
+
+---
+
+## **5. Implementação Técnica Principal**
 
 ### **5.1 Configuração Go (Backend)**
 
-O servidor precisará declarar expressamente o MIME type para o formato Opus antes de inicializar o servidor de arquivos HTTP, evitando falhas de decodificação no navegador por tratar o formato como binário opaco.
-
-import (  
-	"log"  
-	"mime"  
-	"net/http"  
-)
-
-func main() {  
-	// Força o MIME type correto para arquivos Opus  
-	err := mime.AddExtensionType(".opus", "audio/ogg")  
-	if err \!= nil {  
-		log.Fatal("Erro MIME Opus:", err)  
-	}
-
-	fs := http.FileServer(http.Dir("./musicas"))  
-	http.Handle("/musicas/", http.StripPrefix("/musicas/", fs))  
-}
+O servidor registra o MIME type `.opus` como `audio/ogg` antes de inicializar o servidor de arquivos e configura o roteador `chi` com suporte a CORS, recuperação de panics e rotas REST/WebSocket (`backend/cmd/server/main.go`).
 
 ### **5.2 Configuração Vue 3 (Frontend)**
 
-No componente de player do Vue, a tag de áudio usará explicitamente o MIME type audio/ogg; codecs=opus na source. A lógica de sincronização deve ficar isolada num Composable (ex: usePlayer.js) para manter a reatividade enxuta.
+- Rota unificada `/radio/:stationId`: diferencia automaticamente ouvinte e DJ com base na presença e validade do `djToken` salvo no `localStorage`. Caso não haja DJ online na sala, qualquer usuário pode assumir a bancada com 1 clique (`POST /api/v1/stations/{stationId}/claim-dj`).
+- Player fixo inferior estilo YouTube Music (`Player.vue`) e mixer de efeitos sonoros (`AudioMixer.vue`) sincronizado em tempo real com todos os ouvintes da estação.
 
-\<\!-- Player.vue \--\>  
-\<template\>  
-  \<audio ref="audioRef" preload="auto"\>  
-    \<source :src="currentTrackUrl" type="audio/ogg; codecs=opus" /\>  
-  \</audio\>  
-\</template\>
+### **5.3 Conversão de Mídia e Importação do YouTube**
 
-### **5.3 Conversão de Mídia (Upload e Transcodificação)**
+- **FFmpeg (`internal/media/convert.go`):** Aceita uploads nos formatos `.mp3`, `.mp4`, `.wav`, `.ogg`, `.m4a`, `.flac`, `.aac`, `.webm` e `.opus`, convertendo-os para Opus a `96k` VBR e extraindo a duração exata via `ffprobe`.
+- **YouTube (`internal/media/youtube.go`):** Importa áudios do YouTube via `yt-dlp` integrado ao provedor de PO Token (`bgutil-ytdlp-pot-provider`), mantendo cache por ID de vídeo (`yt_cache.json`) para evitar downloads e conversões duplicadas e extraindo metadados e miniaturas (capas).
 
-Para suportar o envio de arquivos nos formatos MP3, MP4 e WAV, o backend atua como um *wrapper* para o **FFmpeg** utilizando o pacote os/exec do Go. A função a seguir isola a trilha de áudio (descartando o vídeo, caso aplicável), converte-a para Opus utilizando bitrate variável (VBR) a 96kbps, e gerencia corretamente as saídas de erro para facilitar a depuração.
+### **5.4 Otimização de Tráfego: Janela Deslizante (Top 3)**
 
-package media
+- **Filtro de Payload:** Nas atualizações de playlist enviadas aos ouvintes, o backend envia a janela das próximas faixas para permitir *pre-buffer* sem sobrecarregar a banda.
+- **Transição Automática:** Quando a faixa atual termina (monitorada por *ticker* no servidor e eventos no cliente), a fila avança automaticamente (`NEXT_TRACK` / `TRACK_CHANGED`) e a próxima música entra em reprodução.
 
-import (  
-	"bytes"  
-	"fmt"  
-	"os/exec"  
-	"path/filepath"  
-	"strings"  
-)
+---
 
-var supportedFormats \= map\[string\]bool{  
-	".mp3": true,  
-	".mp4": true,  
-	".wav": true,  
-}
+## **6. Planejamento da API HTTP e WebSockets**
 
-func ConvertToOpus(inputPath, outputPath string) error {  
-	ext := strings.ToLower(filepath.Ext(inputPath))  
-	if \!supportedFormats\[ext\] {  
-		return fmt.Errorf("formato não suportado: %s", ext)  
-	}
+### **6.1 Rotas de Estações e Biblioteca (`/api/v1`)**
 
-	args := \[\]string{  
-		"-i", inputPath,  
-		"-c:a", "libopus",  
-		"-b:a", "96k",  
-		"-vbr", "on",  
-		"-vn",  
-		"-y",  
-		outputPath,  
-	}
+> * **`POST /api/v1/stations`:** Cria uma nova estação com código curto de 6 caracteres. Retorna `stationId` e `djToken` (JWT HS256).
+> * **`GET /api/v1/stations/{stationId}`:** Retorna metadados da estação, estado do player, playlist, repositório, sugestões, mixer e se há um DJ conectado (`hasDJOnline`).
+> * **`POST /api/v1/stations/{stationId}/claim-dj`:** Permite assumir o papel de DJ emitindo um novo `djToken` quando nenhum DJ estiver conectado na sala.
+> * **`GET /api/v1/library`** e **`GET /api/v1/stations/{stationId}/library`:** Retorna o catálogo global de músicas disponíveis no servidor.
 
-	cmd := exec.Command("ffmpeg", args...)  
-	var stderr bytes.Buffer  
-	cmd.Stderr \= \&stderr
+### **6.2 Rotas Protegidas do DJ (`Authorization: Bearer <djToken>`)**
 
-	err := cmd.Run()  
-	if err \!= nil {  
-		return fmt.Errorf("falha na conversão: %v | Log: %s", err, strings.TrimSpace(stderr.String()))  
-	}  
-	return nil  
-}
+> * **`POST /api/v1/stations/{stationId}/upload`:** Upload multipart de arquivo de áudio e conversão para `.opus`.
+> * **`POST /api/v1/stations/{stationId}/youtube`:** Download e conversão de áudio a partir de uma URL do YouTube.
+> * **`GET /api/v1/stations/{stationId}/repository`:** Lista todas as faixas do repositório da estação.
+> * **`PUT /api/v1/stations/{stationId}/tracks/{trackId}`:** Renomeia ou atualiza metadados de uma faixa.
+> * **`POST /api/v1/stations/{stationId}/cookies`** e **`GET .../cookies/status`:** Gerenciamento de cookies para autenticação do `yt-dlp`.
 
-### **5.4 Otimização de Tráfego: Janela Deslizante (Top 3\)**
+### **6.3 Rotas Administrativas (`/api/v1/admin`)**
 
-Em vez de enviar toda a Playlist para o ouvinte via WebSocket (o que geraria downloads excessivos e desperdício de banda caso o cliente saia da rádio sem ouvir tudo), a plataforma usa a técnica de Janela Deslizante (ou Pre-buffer):
+> * **`GET /api/v1/admin/stations`** e **`DELETE /api/v1/admin/stations/{stationId}`:** Listagem e exclusão de estações.
+> * **`POST /api/v1/admin/purge-orphans`:** Remove arquivos `.opus` órfãos que não estão vinculados a nenhuma estação.
+> * **`PUT /api/v1/admin/tracks/{trackId}`** e **`DELETE /api/v1/admin/stations/{stationId}/tracks/{trackId}`:** Gestão administrativa de faixas.
 
-> * **Filtro de Payload:** Sempre que há uma alteração, o backend em Go recorta o array Playlist para incluir apenas a música atual (índice 0\) e as duas seguintes (índices 1 e 2). O cliente (Vue) recebe exclusivamente esse array com, no máximo, 3 itens.  
-> * **Evento TRACK\_CHANGED:** Quando a música em execução acaba, o Go remove o índice 0 da fila. A antiga música 2 passa a ser a 1, a 3 passa a ser a 2, e uma nova música passa a ocupar a 3ª posição do Payload. O cliente recebe esse payload, nota que há uma música inédita no array e, através do \<audio preload="auto"\>, já realiza o download silencioso e antecipado em background daquela faixa, garantindo a transição *gapless* sem sobrecarregar a rede do servidor abruptamente.  
-> * **Evento PLAYLIST\_UPDATED:** Disparado quando o DJ altera ou insere manualmente uma nova música nas 3 primeiras posições. O cliente atualiza sua fila local e, se houver alteração brusca na música em execução, o Vue ajusta o player de acordo para reproduzir o arquivo correto.
+### **6.4 Conexão e Eventos WebSocket (`/ws/stations/{stationId}`)**
 
-## **6\. Planejamento da API HTTP e WebSockets**
+Aceita `?token=<djToken>` para autenticar o DJ (caso não haja outro DJ já conectado).
 
-Para separar responsabilidades e evitar conflitos de roteamento com arquivos estáticos (como o Vue gerando assets ou os arquivos .opus servidos em /musicas/), o tráfego HTTP tradicional será exposto sob o prefixo /api/v1/ para operações pesadas e controle de estado, enquanto o controle de reprodução ocorrerá via WebSocket.
+- **Comandos de Ouvinte/Geral:** `SYNC_REQUEST`, `SUGGEST_TRACK`.
+- **Comandos Exclusivos do DJ:** `PLAY`, `PAUSE`, `SEEK`, `NEXT_TRACK`, `ADD_TO_PLAYLIST`, `PLAY_PLAYLIST_TRACK`, `REMOVE_FROM_PLAYLIST`, `REORDER_PLAYLIST`, `APPROVE_SUGGESTION`, `REJECT_SUGGESTION`, `CLEAR_SUGGESTIONS`, `MIXER_UPDATE`, `MIXER_SET_CHANNEL`, `MIXER_REMOVE_CHANNEL`, `MIXER_CLEAR`.
+- **Eventos de Broadcast do Servidor:** `STATE_UPDATE`, `TRACK_CHANGED`, `PLAYLIST_UPDATED`, `SUGGESTIONS_UPDATED`, `MIXER_UPDATED`, `DJ_STATUS`, `SYNC`.
 
-### **6.1 Rotas de Gerenciamento de Estações (Rooms)**
+---
 
-> * **POST /api/v1/stations:** Cria uma nova estação de rádio. O usuário que faz a requisição se torna o DJ. Retorna (201 Created) um stationId e um djToken (para ser armazenado no localStorage do Vue).  
-> * **GET /api/v1/stations/{stationId}:** Usado pelos ouvintes para verificar se a sala existe antes de tentar abrir o WebSocket. Retorna (200 OK) os metadados da rádio.
+## **7. Stack Tecnológico e Pacotes**
 
-### **6.2 Rotas do Repositório e Upload (Apenas DJ)**
+Consulte também [`docs/stack.md`](docs/stack.md) para as justificativas detalhadas.
 
-Requer cabeçalho Authorization: Bearer \<djToken\>.
+### **7.1 Backend (Go 1.26)**
 
-> * **POST /api/v1/stations/{stationId}/upload:** Recebe o arquivo de áudio via multipart/form-data. Executa a conversão via FFmpeg e adiciona ao Repositório da rádio. Retorna (202 Accepted) o objeto da faixa que foi gerado.  
-> * **GET /api/v1/stations/{stationId}/repository:** Retorna (200 OK) todas as músicas que o DJ já fez upload para o estoque da rádio.
+* **[`github.com/gorilla/websocket`](https://github.com/gorilla/websocket):** Upgrade HTTP e gerenciamento das conexões WebSocket com Ping/Pong e deadlines.
+* **[`github.com/go-chi/chi/v5`](https://github.com/go-chi/chi/v5):** Roteador HTTP leve e middlewares (`/api/v1/`).
+* **[`github.com/rs/cors`](https://github.com/rs/cors):** Configuração de Cross-Origin Resource Sharing.
+* **[`github.com/google/uuid`](https://github.com/google/uuid):** Geração de UUIDs para faixas, clientes e sugestões.
+* **[`github.com/golang-jwt/jwt/v5`](https://github.com/golang-jwt/jwt/v5):** Emissão e validação stateless do `djToken` (HS256).
+* **[`github.com/joho/godotenv`](https://github.com/joho/godotenv):** Carregamento de variáveis de ambiente.
 
-### **6.3 Conexão WebSocket**
+### **7.2 Frontend (Vue 3)**
 
-> * **GET /ws/stations/{stationId}:** Rota para o *Upgrade* da requisição HTTP para a conexão bidirecional WebSocket. Pode receber opcionalmente um parâmetro de query ?role=dj\&token=\<djToken\>. Caso o token seja validado, a conexão recebe permissão de emissão de comandos (Play/Pause, Add/Remove na playlist). Sem o token, a conexão atua como um mero ouvinte (apenas leitura do broadcast).
+* **`vue` (v3) + `vite`:** SPA reativa com Composition API e build otimizado.
+* **`vue-router` (v4):** Roteamento das telas (`/`, `/radio/:stationId`, `/admin`).
+* **`pinia`:** Gerenciamento de estado reativo sincronizado ao WebSocket.
+* **`axios`:** Cliente HTTP para chamadas REST e uploads.
+* **Vanilla CSS (`src/style.css`):** Design system próprio tema escuro estilo YouTube Music, sem dependência de Tailwind.
+* **`lucide-vue-next`:** Ícones SVG da interface.
 
-### **6.4 Fluxos de Consumo (Frontend Vue)**
+### **7.3 Infraestrutura, Mensageria, Dados e Observabilidade**
 
-> * **Ciclo do DJ:** Cria a rádio na API, armazena o token, carrega o repositório, abre a conexão WebSocket de administrador e faz upload de arquivos via POST. Quando finalizado, o DJ envia comandos JSON pelo WebSocket para inserir as faixas na playlist.  
-> * **Ciclo do Ouvinte:** Acessa a URL pública da rádio, valida a existência da sala via GET, abre a conexão WebSocket padrão e começa a receber a janela das Top 3 músicas (Payload) junto do estado do player, acionando as reproduções locais.
+* **Docker & Docker Compose:** Orquestração local da aplicação e de todos os serviços de infraestrutura.
+* **Traefik v3:** API Gateway, descoberta automática de containers, *rate limiting* e exportação de métricas.
+* **Redis 7:** Estado quente das estações e Pub/Sub para fan-out de WebSockets.
+* **RabbitMQ 3.13:** Fila de mensagens para transcodificação assíncrona e Dead-Letter Queue (DLQ).
+* **PostgreSQL 16 & MinIO:** Banco de dados relacional e Object Storage compatível com S3.
+* **Prometheus & Grafana:** Coleta de séries temporais e visualização de métricas.
+* **GitHub Actions:** Pipeline de CI executando `go vet`, `go test -race ./...`, build do frontend, validação do Compose e build da imagem Docker.
 
-Como sou uma IA baseada em texto, não tenho acesso para editar seu documento diretamente. No entanto, preparei o conteúdo abaixo formatado para que você possa copiar e colar facilmente no seu arquivo, antes da seção de Roadmap.
+---
 
-**7\. Stack Tecnológico e Pacotes7.1 Backend (Go)**
+## **8. Roadmap e Fases de Desenvolvimento**
 
-* [**github.com/gorilla/websocket**](https://github.com/gorilla/websocket)**:** Para o Upgrade da requisição HTTP e gerenciamento dos eventos WebSocket em tempo real.  
-* [**github.com/go-chi/chi/v5**](https://github.com/go-chi/chi/v5)**:** Roteador HTTP minimalista e muito rápido, compatível com os handlers nativos do Go, para criar o grupo de rotas `/api/v1/` e injetar middlewares.  
-* [**github.com/rs/cors**](https://github.com/rs/cors)**:** Middleware para evitar bloqueios de Cross-Origin Resource Sharing, permitindo a comunicação entre frontend e backend em domínios/portas diferentes.  
-* [**github.com/google/uuid**](https://github.com/google/uuid)**:** Para gerar IDs únicos e seguros para as estações (`stationId`) e arquivos de música (`trackId`).  
-* [**github.com/golang-jwt/jwt/v5**](https://github.com/golang-jwt/jwt/v5)**:** Para emitir e validar o `djToken` nas rotas protegidas.  
-* [**github.com/joho/godotenv**](https://github.com/joho/godotenv)**:** Para gerenciar variáveis de ambiente de forma limpa.
-
-**7.2 Frontend (Vue 3\)**
-
-* **`vite`:** Bundler extremamente rápido, ideal para a Composition API.  
-* **`vue-router (v4)`:** Para gerenciar o fluxo da Single Page Application (SPA), lidando com as rotas dinâmicas como `/radio/:stationId`.  
-* **`pinia`:** Para armazenamento global do estado da aplicação, permitindo que a barra de progresso, a lista lateral e os controles reajam instantaneamente ao WebSocket.  
-* **`axios`:** Cliente HTTP focado na comunicação com a API REST, facilitando upload de `multipart/form-data` e injeção de tokens.  
-* **`tailwindcss`:** Framework CSS utilitário para prototipação veloz da interface.  
-* **`lucide-vue-next`:** Biblioteca de ícones SVG limpos para os controles da plataforma.
-
-## **8\. Roadmap e Fases de Desenvolvimento**
-
-| Fase | Objetivo | Entregáveis   |
-| :---- | :---- | :---- |
-| **Fase 1: MVP** | Estabelecer a conexão e sincronização básica. | Servidor Go enviando arquivos estáticos .opus; WebSockets (echo) estabelecidos; player simples em Vue que toca a música local. |
-| **Fase 2: Gestão de Salas e Fluxo do DJ** | Lidar com o tráfego multi-usuário e papéis. | Modelagem do PlaybackState, do Repositório e da Playlist no Go; implementação da API HTTP (REST); upload e conversão das músicas. |
-| **Fase 3: Otimizações e Retenção** | Recursos maduros de retenção e navegação. | Implementação da Janela Deslizante (regra das Top 3 músicas e pre-buffer); telas interativas para contornar bloqueio de Autoplay. |
-
-## **9\. Pontos de Atenção e Desafios**
-
-> * **Restrições de Autoplay:** Navegadores modernos como Chrome e Firefox bloqueiam a reprodução de áudio não-silenciado antes de uma interação direta do usuário no DOM. É fundamental incorporar uma etapa com um botão de "Entrar na Estação" que os ouvintes devam clicar antes que a API execute o .play() acionado via WebSocket.  
-> * **Duração do Arquivo (Metadados):** Para automatizar a transição de faixas na fila de reprodução, o backend Go necessita da duração exata do arquivo .opus. Como a extração nativa de containers Ogg é complexa, a estratégia recomendada é rodar um sub-processo via os/exec chamando o FFmpeg (ffprobe) no momento que a música é indexada na playlist.  
-> * **Tratamento de Desconexões (Ping/Pong):** O ecossistema Gorilla WebSockets exige que o servidor gerencie ativamente a vitalidade das conexões. Deve-se implementar lógicas de Ping/Pong para identificar rapidamente se a conexão de um ouvinte caiu silenciosamente, liberando as *goroutines* e otimizando a memória consumida pela Station.
-
+| Fase | Objetivo | Entregáveis | Status |
+| :--- | :--- | :--- | :--- |
+| **Fase 1: MVP** | Conexão e sincronização básica. | Servidor Go servindo `.opus`; Hub WebSocket; player Vue sincronizado por timestamp. | Concluído |
+| **Fase 2: Gestão de Salas e DJ** | Fluxo multi-usuário e autenticação. | `PlaybackState`, Repositório, Playlist, JWT (`djToken`), upload e transcodificação FFmpeg. | Concluído |
+| **Fase 3: Otimizações e Retenção** | Experiência de escuta contínua. | Janela deslizante (Top 3 + pre-buffer), Ping/Pong com timeouts, desbloqueio de Autoplay. | Concluído |
+| **Fase 4: Recursos Avançados e Nova UI** | Interatividade completa e persistência. | Importação do YouTube (`yt-dlp` + PO Token), Biblioteca Global, Sugestões de ouvintes, Mixer de efeitos sonoros sincronizado, Assumir DJ com 1 clique, Painel Admin, Persistência atômica JSON e UI Vanilla CSS estilo YouTube Music com capas e *drag-and-drop*. | Concluído |
+| **Fase 5: Arquitetura Distribuída (Entrega 2)** | Documentação arquitetural, infra e CI. | Diagramas C4 (Níveis 1 e 2), ADRs 0001–0006, `docker-compose.yml` completo (Traefik, Redis, RabbitMQ, Postgres, MinIO, Prometheus, Grafana), CI no GitHub Actions e testes unitários com `-race`. | Concluído |
+| **Fase 6: Extração e Resiliência (Entrega 3)** | Escalabilidade horizontal e testes de carga. | Extração via Strangler Fig do Sync Service (Redis Pub/Sub), Media Worker (RabbitMQ + Retry/DLQ + Circuit Breaker) e Station Service (Postgres + MinIO), endpoint `/metrics`, dashboards Grafana e testes de carga/resiliência com k6. | Em andamento |
