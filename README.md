@@ -245,6 +245,7 @@ radio/
 | Ferramenta | Onde atuou | Como foi orientada | Avaliação honesta |
 |---|---|---|---|
 | Claude (Anthropic) | Entrega 2: rascunho dos ADRs 0001–0006, diagramas C4 em Mermaid, plano de testes, `docker-compose.yml` com a infraestrutura, workflow de CI e testes unitários Go | Recebeu o documento do projeto final e o link do repositório; leu o código atual e gerou os artefatos a partir dele | Os testes encontraram um bug real em `ExtractYouTubeURL` (corrigido). A equipe revisou os ADRs e ajustou: _descrever aqui o que foi alterado ou descartado_ |
+| Claude (Anthropic), via Claude Code — João Vitor Sampaio Costa (Membro 5) | Frente de Testes + Observabilidade: C4 nível 1 (`docs/c4/01-contexto.md`), template de ADR, mapeamento de padrões arquiteturais (`docs/padroes.md`), plano de testes preliminar e configuração inicial de Prometheus e Grafana (`infra/`). Também auxiliou na aplicação dos patches, nos commits/PRs e em subir o Docker Compose para teste | Recebeu o enunciado da tarefa e o repositório; leu o código atual e gerou os documentos a partir dele | O conteúdo foi gerado a partir do código existente, não de decisões prévias do grupo. Validei a configuração subindo a stack da `dev`: os alvos `prometheus` e `traefik` ficam UP e o `radiosync` fica DOWN até o endpoint `/metrics` ser implementado (Entrega 3) |
 | _ferramenta usada no desenvolvimento inicial (ex.: Gemini, Copilot)_ | _ex.: geração do Plano de Arquitetura e de partes do backend/frontend_ | _preencher_ | _preencher_ |
 | _outras_ | | | |
 
