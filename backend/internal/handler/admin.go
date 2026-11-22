@@ -224,10 +224,13 @@ func SaveCookiesAdmin(w http.ResponseWriter, r *http.Request) {
 	_ = os.MkdirAll(dir, 0755)
 	cookiesPath := filepath.Join(dir, "cookies.txt")
 
-	if err := os.WriteFile(cookiesPath, []byte(req.Content), 0644); err != nil {
+	if err := os.WriteFile(cookiesPath, []byte(req.Content), 0600); err != nil {
 		http.Error(w, fmt.Sprintf("erro ao salvar cookies.txt: %v", err), http.StatusInternalServerError)
 		return
 	}
+	// cookies.txt guarda a sessão do YouTube: só o próprio processo lê (0600),
+	// inclusive se o arquivo já existia com outra permissão.
+	_ = os.Chmod(cookiesPath, 0600)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{

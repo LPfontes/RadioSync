@@ -49,10 +49,16 @@ func DownloadYouTubeHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	videoURL, err := media.ValidateYouTubeURL(req.URL)
+	if err != nil {
+		http.Error(w, "informe um link do YouTube (youtube.com ou youtu.be)", http.StatusBadRequest)
+		return
+	}
+
 	trackID := uuid.New().String()
 	opusPath := fmt.Sprintf("%s/%s.opus", getMusicDir(), trackID)
 
-	title, duration, err := media.DownloadYouTubeAudio(req.URL, opusPath)
+	title, duration, err := media.DownloadYouTubeAudio(videoURL, opusPath)
 	if err != nil {
 		log.Printf("erro ao baixar do YouTube para estação %s: %v", stationID, err)
 		http.Error(w, fmt.Sprintf("erro no download do YouTube: %v", err), http.StatusInternalServerError)
@@ -123,10 +129,13 @@ func UploadCookiesHandler(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	if err := os.WriteFile(cookiesPath, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(cookiesPath, []byte(content), 0600); err != nil {
 		http.Error(w, fmt.Sprintf("erro ao salvar cookies: %v", err), http.StatusInternalServerError)
 		return
 	}
+	// cookies.txt guarda a sessão do YouTube: só o próprio processo lê (0600),
+	// inclusive se o arquivo já existia com outra permissão.
+	_ = os.Chmod(cookiesPath, 0600)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
