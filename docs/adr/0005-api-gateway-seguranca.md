@@ -52,6 +52,29 @@ entrada para redirecionar rotas.
 - **Como vamos validar:** testes de integração garantindo `401` nas rotas
   admin sem token; teste de carga confirmando `429 Too Many Requests` acima do limite.
 
+## Implementação (Entrega 3): CORS e Origin do WebSocket
+
+- **Regra:** só a mesma origem por padrão. Origens extras entram por
+  `ALLOWED_ORIGINS` (lista separada por vírgula, sem curinga). O app é servido
+  na mesma origem da API (pelo Go, pelo gateway e pelo proxy do Vite, que
+  preservam o `Host`), então em geral a lista fica vazia.
+- **CORS:** `AllowOriginFunc` com a allowlist (com `AllowedOrigins` vazio o
+  `rs/cors` liberaria todas as origens), sem `AllowCredentials` (a autenticação
+  é por header `Bearer`, não por cookie) e só os headers `Authorization` e
+  `Content-Type`.
+- **WebSocket:** o `CheckOrigin` deixou de aceitar tudo. Aceita requisições sem
+  `Origin` (clientes que não são navegador, como k6), a mesma origem e a
+  allowlist; o resto recebe `403`, o que bloqueia Cross-Site WebSocket
+  Hijacking (uma página de outro site abrindo a conexão no navegador da vítima).
+- **Código:** `internal/security` concentra as regras, com testes de
+  normalização, CORS e handshake real do WebSocket.
+
+Validado na stack: `Origin: https://evil.example` recebe `403` no WebSocket e
+nenhum cabeçalho CORS, pelo gateway, pela porta 8080 e pelo proxy do Vite;
+mesma origem e clientes sem `Origin` recebem `101`; com
+`ALLOWED_ORIGINS=https://radio.exemplo.com`, essa origem passa no preflight e
+no WebSocket.
+
 ## Validação (Entrega 2)
 
 Subimos o `docker-compose.yml` completo localmente (Docker Engine 29) e
