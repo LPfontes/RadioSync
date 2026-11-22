@@ -71,6 +71,38 @@ services:
       - traefik.http.routers.radiosync.entrypoints=web
       - traefik.http.routers.radiosync.middlewares=api-ratelimit
       - traefik.http.services.radiosync.loadbalancer.server.port=8080
+      # ---- Limites por rota (ADR-0005), mais rígidos que o global, por IP ----
+      # Criar estação: evita criação em massa de salas (10/min, burst 5)
+      - traefik.http.routers.radiosync-create-station.rule=Method(`POST`) && (Path(`/api/v1/stations`) || Path(`/api/v1/stations/`))
+      - traefik.http.routers.radiosync-create-station.entrypoints=web
+      - traefik.http.routers.radiosync-create-station.priority=90
+      - traefik.http.routers.radiosync-create-station.service=radiosync
+      - traefik.http.routers.radiosync-create-station.middlewares=create-station-ratelimit
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.burst=5
+      # Upload e YouTube: CPU do FFmpeg/yt-dlp. 6/min (burst 3), no máximo
+      # 2 em andamento por IP e corpo até 100 MB (acima disso, 413)
+      - traefik.http.routers.radiosync-media.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/(upload|youtube)$`)
+      - traefik.http.routers.radiosync-media.entrypoints=web
+      - traefik.http.routers.radiosync-media.priority=90
+      - traefik.http.routers.radiosync-media.service=radiosync
+      - traefik.http.routers.radiosync-media.middlewares=media-ratelimit,media-inflight,media-bodylimit
+      - traefik.http.middlewares.media-ratelimit.ratelimit.average=6
+      - traefik.http.middlewares.media-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.media-ratelimit.ratelimit.burst=3
+      - traefik.http.middlewares.media-inflight.inflightreq.amount=2
+      - traefik.http.middlewares.media-inflight.inflightreq.sourcecriterion.ipstrategy.depth=0
+      - traefik.http.middlewares.media-bodylimit.buffering.maxRequestBodyBytes=104857600
+      # Assumir DJ: evita ficar tomando a bancada em loop (10/min, burst 5)
+      - traefik.http.routers.radiosync-claim-dj.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/claim-dj$`)
+      - traefik.http.routers.radiosync-claim-dj.entrypoints=web
+      - traefik.http.routers.radiosync-claim-dj.priority=90
+      - traefik.http.routers.radiosync-claim-dj.service=radiosync
+      - traefik.http.routers.radiosync-claim-dj.middlewares=claim-dj-ratelimit
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.burst=5
       # Rate limiting no gateway (padrão Rate Limit / Throttling)
       - traefik.http.middlewares.api-ratelimit.ratelimit.average=50
       - traefik.http.middlewares.api-ratelimit.ratelimit.burst=100
