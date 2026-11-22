@@ -153,6 +153,7 @@ As principais variáveis configuráveis no servidor Go:
 | Variável | Valor Padrão | Descrição |
 | :--- | :--- | :--- |
 | `PORT` | `8080` | Porta onde o servidor HTTP/WS irá escutar. |
+| `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras aceitas no CORS e no WebSocket (separadas por vírgula). Vazio = só a mesma origem. |
 | `MUSIC_DIR` | `../musicas` (ou `/app/musicas`) | Diretório onde os arquivos `.opus` convertidos são armazenados. |
 | `DATA_DIR` | `./data` (ou `/app/data`) | Diretório onde o arquivo de estado `stations.json` é armazenado. |
 | `FRONTEND_DIR` | `../frontend/dist` (ou `/app/frontend/dist`) | Diretório contendo os arquivos estáticos compilados da SPA Vue. |
