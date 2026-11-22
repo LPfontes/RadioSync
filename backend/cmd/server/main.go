@@ -46,9 +46,12 @@ func main() {
 	handler.LoadTracksCatalog()
 	handler.LoadStations()
 	go handler.PeriodicSave()
+	handler.SaveOnShutdown()
 
 	fileServer := http.FileServer(http.Dir(musicDir))
 	r.Handle("/musicas/*", http.StripPrefix("/musicas/", fileServer))
+	// Saúde e versão em execução, para o HEALTHCHECK e o deploy (ADR-0007)
+	r.Get("/healthz", handler.Healthz)
 
 	r.Route("/api/v1/stations", func(r chi.Router) {
 		r.Post("/", handler.CreateStation)
