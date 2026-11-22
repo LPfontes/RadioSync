@@ -91,7 +91,7 @@ async function createRoom() {
     saveStation(data.stationId, 'dj', data.djToken)
     router.push(`/radio/${data.stationId}`)
   } catch (e) {
-    error.value = 'Erro ao criar estação'
+    error.value = e?.response?.status === 429 ? e.response.data : 'Erro ao criar estação'
   } finally {
     loading.value = false
   }

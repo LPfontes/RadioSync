@@ -4,6 +4,28 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
 })
 
+// Respostas do gateway (rate limit e tamanho do corpo, ADR-0005) chegam em
+// inglês e sem JSON. Troca o corpo por uma mensagem que as telas já exibem.
+const GATEWAY_MESSAGES = {
+  413: () => 'Arquivo grande demais. O limite é 100 MB.',
+  429: (res) => {
+    const wait = parseInt(res.headers?.['retry-after'], 10)
+    return wait > 0
+      ? `Muitas requisições em pouco tempo. Tente de novo em ${wait} s.`
+      : 'Muitas requisições em pouco tempo. Aguarde um pouco e tente de novo.'
+  },
+}
+
+api.interceptors.response.use(undefined, (error) => {
+  const build = GATEWAY_MESSAGES[error?.response?.status]
+  const msg = build && build(error.response)
+  if (msg) {
+    error.response.data = msg
+    error.message = msg
+  }
+  return Promise.reject(error)
+})
+
 export function setDJToken(token) {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
