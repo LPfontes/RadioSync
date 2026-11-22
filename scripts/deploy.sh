@@ -3,7 +3,7 @@
 #
 # Uso:
 #   ./scripts/deploy.sh            # versão = SHA curto do HEAD (constrói a imagem se não existir)
-#   ./scripts/deploy.sh <tag>      # versão já construída ou baixada (ex.: rollback manual)
+#   ./scripts/deploy.sh <tag>      # versão já construída, ou baixada do registry (ex.: rollback manual)
 #
 # Passos:
 #   1. resolve a tag (SHA do commit) e garante que a imagem <imagem>:<tag> existe
@@ -43,8 +43,12 @@ if [ -n "$(git status --porcelain --untracked-files=no)" ]; then DIRTY=1; fi
 
 if ! docker image inspect "$IMAGE:$TAG" >/dev/null 2>&1; then
   if [ "$TAG" != "$HEAD_SHA" ]; then
-    log "imagem $IMAGE:$TAG não existe aqui; faça o build ou o pull dela antes"
-    exit 1
+    # Tag de outra versão: tenta baixar do registry (imagem publicada pelo CI)
+    log "imagem $IMAGE:$TAG não existe aqui; tentando docker pull"
+    if ! docker pull -q "$IMAGE:$TAG" >/dev/null 2>&1; then
+      log "não foi possível obter $IMAGE:$TAG; faça o build ou o pull dela antes"
+      exit 1
+    fi
   fi
   if [ -n "$DIRTY" ]; then
     if [ "${ALLOW_DIRTY:-}" != "1" ]; then
@@ -84,8 +88,18 @@ switch_to() {
 #    usuário sente pelo gateway.
 wait_healthy() {
   local want="$1" deadline=$(( $(date +%s) + TIMEOUT )) body health
+  local state
   while [ "$(date +%s)" -lt "$deadline" ]; do
     health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+    # Falha rápida: em crash (reiniciando/encerrado) ou já marcado unhealthy
+    # não adianta esperar o timeout; cada segundo aqui é o app fora do ar.
+    state="$(docker inspect -f '{{.State.Status}} {{.RestartCount}}' "$CONTAINER" 2>/dev/null || true)"
+    case "$state" in
+      restarting*|exited*|dead*) log "container em crash ($state)"; return 1 ;;
+      *" 0"|"") ;;
+      *) log "container reiniciou ($state)"; return 1 ;;
+    esac
+    if [ "$health" = "unhealthy" ]; then log "HEALTHCHECK marcou unhealthy"; return 1; fi
     if [ "$health" = "healthy" ] \
        && body="$(docker exec "$CONTAINER" curl -fsS http://localhost:8080/healthz 2>/dev/null)" \
        && printf '%s' "$body" | grep -q "\"version\":\"$want\""; then
@@ -106,8 +120,8 @@ if wait_healthy "$TAG"; then
 fi
 
 # ---------------------------------------------------------------- 5. rollback
-log "FALHOU: $TAG não ficou saudável em ${TIMEOUT}s. Últimas linhas do log:"
-docker logs --tail 15 "$CONTAINER" 2>&1 | sed 's/^/    /' || true
+log "FALHOU: $TAG não ficou saudável (limite: ${TIMEOUT}s). Últimas linhas do log:"
+docker logs --tail 6 "$CONTAINER" 2>&1 | sed 's/^/    /' || true
 record "$TAG" "falhou" "rollback para ${PREV_TAG:-nenhuma}"
 
 if [ -z "$PREV_TAG" ]; then
