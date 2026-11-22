@@ -13,7 +13,10 @@ COPY backend/ .
 RUN CGO_ENABLED=0 go build -o server ./cmd/server/
 
 FROM denoland/deno:alpine
-RUN apk add --no-cache ffmpeg ca-certificates python3 py3-pip curl && \
+# apk upgrade: aplica as correções de segurança dos pacotes da imagem base
+# (o scan do Trivy no CI falha em HIGH/CRITICAL com correção disponível)
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ffmpeg ca-certificates python3 py3-pip curl && \
     curl -L https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
     chmod a+rx /usr/local/bin/yt-dlp && \
     pip install --break-system-packages -U bgutil-ytdlp-pot-provider yt-dlp-ejs

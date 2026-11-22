@@ -2,6 +2,8 @@ module radio-backend
 
 go 1.26.1
 
+toolchain go1.26.11
+
 require (
 	github.com/go-chi/chi/v5 v5.3.1 // indirect
 	github.com/golang-jwt/jwt/v5 v5.3.1 // indirect

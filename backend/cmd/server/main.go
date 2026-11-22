@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
@@ -118,6 +119,18 @@ func main() {
 		port = "8080"
 	}
 
+	// Timeouts contra Slowloris (gosec G114): quem abre conexão e manda o
+	// cabeçalho devagar segura uma goroutine e um socket para sempre. Só o
+	// cabeçalho e a ociosidade têm limite; ReadTimeout/WriteTimeout cortariam
+	// uploads grandes e as conexões WebSocket, que são longas por natureza.
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+
 	log.Printf("Servidor rodando na porta %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Fatal(srv.ListenAndServe())
 }

@@ -130,6 +130,13 @@ O CI (GitHub Actions, `.github/workflows/ci.yml`) roda `go vet`, os testes com
 detector de race condition, o build do frontend, a validação do
 `docker-compose.yml` e o build da imagem Docker em todo push e pull request.
 
+O workflow de segurança (`.github/workflows/security.yml`, [ADR-0008](docs/adr/0008-devsecops-pipeline.md))
+roda em todo pull request, em push para `dev`/`main` e toda segunda-feira:
+`govulncheck` e `npm audit` (dependências), gitleaks (segredos no histórico),
+Trivy (imagem e configuração), gosec (análise estática) e SBOM SPDX da imagem.
+Os resultados aparecem em **Security → Code scanning**, e o SBOM fica nos
+artefatos da execução.
+
 ---
 
 ## 🏛️ Documentação de Arquitetura
