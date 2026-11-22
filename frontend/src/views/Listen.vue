@@ -358,7 +358,13 @@ onMounted(async () => {
   if (id) {
     store.stationId = id
 
+    // Links antigos /radio/ID?token=... ainda funcionam, mas o token sai da
+    // barra de endereço na hora para não ficar no histórico nem ser repassado.
     const queryToken = route.query.token
+    if (queryToken) {
+      const { token: _removed, ...rest } = route.query
+      router.replace({ query: rest })
+    }
     let candidateToken = queryToken
     if (!candidateToken) {
       const saved = getSavedStations().find(s => s.id === id)

@@ -35,6 +35,27 @@ entrada para redirecionar rotas.
    **trocar o `JWT_SECRET`** e regenerar os cookies do YouTube (os atuais devem
    ser considerados vazados).
 
+## Implementação (Entrega 3): token de DJ fora da URL
+
+O WebSocket recebia o token de DJ na query string (`?role=dj&token=...`), e a
+URL completa ia para o log do chi no Go e para o access log do Traefik. Quem
+lesse os logs virava DJ de qualquer sala.
+
+- **WebSocket:** o token vai no header `Sec-WebSocket-Protocol`, como
+  subprotocolo (`new WebSocket(url, ["radiosync.v1", "radiosync.auth.<token>"])`).
+  É o único header que o navegador deixa definir no WebSocket. O servidor
+  responde só com `radiosync.v1`, sem ecoar o token, e ignora `?token=` de
+  clientes antigos (registra um aviso sem o token).
+- **`GET /stations/{id}`:** aceita o token só em `Authorization: Bearer`; a
+  alternativa por query string foi removida (o frontend já usava o header).
+- **Links `/radio/ID?token=...`:** continuam funcionando, mas o token sai da
+  barra de endereço na hora. O primeiro acesso ainda passa pelo log, então o
+  app não deve gerar esse tipo de link.
+
+Alternativa descartada: autenticar com a primeira mensagem depois de conectar.
+Exigiria trocar o papel do cliente já registrado no Hub, que é a frente do
+Sync Service (Membro 1).
+
 ## Alternativas consideradas
 
 | Alternativa | Prós | Contras |
