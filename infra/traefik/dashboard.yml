@@ -1,0 +1,29 @@
+# Dashboard e API do Traefik protegidos por senha (ADR-0005).
+#
+# Substitui o antigo --api.insecure=true, que deixava o dashboard (com todas
+# as rotas, serviços e IPs internos) aberto para qualquer um na porta 8081.
+#
+# A senha fica em infra/traefik/dashboard.htpasswd (bcrypt, fora do git).
+# Gere com:  ./scripts/traefik-dashboard-password.sh <usuario>
+# Sem esse arquivo o middleware falha e o dashboard fica inacessível:
+# seguro por padrão.
+#
+# As métricas (/metrics) continuam no mesmo entrypoint, sem senha, para o
+# Prometheus raspar pela rede interna; a porta 8081 é publicada só em
+# 127.0.0.1 no docker-compose.yml.
+http:
+  routers:
+    dashboard:
+      entryPoints:
+        - traefik
+      rule: PathPrefix(`/api`) || PathPrefix(`/dashboard`)
+      service: api@internal
+      middlewares:
+        - dashboard-auth
+
+  middlewares:
+    dashboard-auth:
+      basicAuth:
+        usersFile: /etc/traefik/dynamic/dashboard.htpasswd
+        realm: RadioSync - Traefik
+        removeHeader: true
