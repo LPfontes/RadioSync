@@ -106,7 +106,7 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 		role = "dj"
 	}
 
-	json.NewEncoder(w).Encode(map[string]interface{}{
+	resp := map[string]interface{}{
 		"id":          station.ID,
 		"playlist":    playlist,
 		"state":       state,
@@ -115,7 +115,18 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 		"mixer":       mixer,
 		"hasDJOnline": hasDJ,
 		"role":        role,
-	})
+	}
+
+	// Expiração deslizante: quem já é DJ recebe um token novo a cada vez que
+	// abre a sala, então o token só expira após DJ_TOKEN_TTL sem uso.
+	if role == "dj" {
+		if renewed, err := auth.GenerateDJToken(id); err == nil {
+			resp["djToken"] = renewed
+		}
+		w.Header().Set("Cache-Control", "no-store")
+	}
+
+	json.NewEncoder(w).Encode(resp)
 }
 
 func ClaimDJRole(w http.ResponseWriter, r *http.Request) {

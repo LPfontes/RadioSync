@@ -372,8 +372,10 @@ onMounted(async () => {
       store.hasDJOnline = !!data.hasDJOnline
 
       if (data.role === 'dj' && candidateToken) {
-        store.setStation(id, candidateToken, 'dj')
-        saveStation(id, 'dj', candidateToken)
+        // O backend devolve um token renovado (expiração deslizante).
+        const djToken = data.djToken || candidateToken
+        store.setStation(id, djToken, 'dj')
+        saveStation(id, 'dj', djToken)
         return
       }
 

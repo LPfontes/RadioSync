@@ -47,6 +47,7 @@ services:
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_TOKEN_TTL=${ADMIN_TOKEN_TTL:-8h}
       - POT_PROVIDER_URL=http://bgutil-provider:4416
+      - DJ_TOKEN_TTL=${DJ_TOKEN_TTL:-24h}
       # Variáveis já disponíveis para a migração (ainda não lidas pelo código):
       - REDIS_URL=redis://redis:6379/0
       - AMQP_URL=amqp://${RABBITMQ_USER:-radiosync}:${RABBITMQ_PASSWORD:-radiosync}@rabbitmq:5672/

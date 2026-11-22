@@ -19,6 +19,13 @@ import (
 func main() {
 	godotenv.Load()
 
+	// Sem segredo forte não há como confiar nos tokens de DJ (ADR-0005).
+	if warning, err := auth.CheckSecret(); err != nil {
+		log.Fatal(err)
+	} else if warning != "" {
+		log.Printf("AVISO: %s", warning)
+	}
+
 	err := mime.AddExtensionType(".opus", "audio/ogg")
 	if err != nil {
 		log.Fatal("Erro MIME Opus:", err)

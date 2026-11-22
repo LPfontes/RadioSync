@@ -155,9 +155,10 @@ As principais variáveis configuráveis no servidor Go:
 | `PORT` | `8080` | Porta onde o servidor HTTP/WS irá escutar. |
 | `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras aceitas no CORS e no WebSocket (separadas por vírgula). Vazio = só a mesma origem. |
 | `MUSIC_DIR` | `../musicas` (ou `/app/musicas`) | Diretório onde os arquivos `.opus` convertidos são armazenados. |
+| `DJ_TOKEN_TTL` | `24h` | Validade do token de DJ. É renovada sempre que o DJ abre a sala. |
 | `DATA_DIR` | `./data` (ou `/app/data`) | Diretório onde o arquivo de estado `stations.json` é armazenado. |
 | `FRONTEND_DIR` | `../frontend/dist` (ou `/app/frontend/dist`) | Diretório contendo os arquivos estáticos compilados da SPA Vue. |
-| `JWT_SECRET` | `dev-secret-change-in-production` | Chave secreta usada para assinar e validar tokens JWT do DJ. |
+| `JWT_SECRET` | _(aleatório por processo)_ | Chave dos tokens JWT, com no mínimo 32 caracteres (`openssl rand -hex 32`). Valores de exemplo ou curtos impedem a subida; sem a variável o servidor usa um segredo temporário e os tokens caem a cada reinício. |
 | `ADMIN_PASSWORD` | _(vazio)_ | Senha do painel `/admin`. Vazia = rotas de admin desabilitadas (`503`). |
 | `ADMIN_TOKEN_TTL` | `8h` | Validade do JWT de admin emitido no login. |
 
