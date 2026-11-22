@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
 
 	"github.com/go-chi/chi/v5"
@@ -17,6 +18,13 @@ import (
 
 func main() {
 	godotenv.Load()
+
+	// Sem segredo forte não há como confiar nos tokens de DJ (ADR-0005).
+	if warning, err := auth.CheckSecret(); err != nil {
+		log.Fatal(err)
+	} else if warning != "" {
+		log.Printf("AVISO: %s", warning)
+	}
 
 	err := mime.AddExtensionType(".opus", "audio/ogg")
 	if err != nil {
