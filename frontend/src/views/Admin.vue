@@ -8,6 +8,10 @@
           <span class="admin-brand-title">RadioSync — Painel de Administração</span>
         </div>
         <div class="header-actions">
+          <button v-if="isAuthenticated" @click="logout" class="btn btn-secondary">
+            <LogOut class="icon-sm" />
+            Sair
+          </button>
           <router-link to="/" class="btn btn-secondary">
             Voltar ao Início
           </router-link>
@@ -15,7 +19,31 @@
       </div>
     </header>
 
-    <div class="admin-main">
+    <!-- Login do admin (ADR-0005) -->
+    <div v-if="!isAuthenticated" class="admin-main">
+      <form class="card-bordered admin-login" @submit.prevent="submitLogin">
+        <div class="admin-login-title">
+          <Lock class="icon-md text-emerald" />
+          <h2>Acesso restrito</h2>
+        </div>
+        <p class="admin-login-hint">Informe a senha de administrador para acessar o painel.</p>
+        <input
+          v-model="loginPassword"
+          type="password"
+          class="input"
+          placeholder="Senha de admin"
+          autocomplete="current-password"
+          autofocus
+          required
+        />
+        <p v-if="loginError" class="admin-login-error">{{ loginError }}</p>
+        <button type="submit" class="btn btn-primary" :disabled="loggingIn || !loginPassword">
+          {{ loggingIn ? 'Entrando...' : 'Entrar' }}
+        </button>
+      </form>
+    </div>
+
+    <div v-else class="admin-main">
       <!-- Notificação / Mensagem de Alerta -->
       <div v-if="actionMessage" class="alert-banner">
         <span>{{ actionMessage }}</span>
@@ -230,7 +258,7 @@
             <div class="station-admin-actions">
               <!-- Copiar Token DJ -->
               <button
-                @click="copyToken(st.djToken)"
+                @click="copyToken(st.id)"
                 class="btn btn-secondary font-mono"
                 title="Copiar Token DJ"
               >
@@ -239,7 +267,7 @@
               </button>
 
               <!-- Entrar como DJ -->
-              <button @click="enterAsDJ(st.id, st.djToken)" class="btn btn-primary">
+              <button @click="enterAsDJ(st.id)" class="btn btn-primary">
                 <Disc class="icon-sm" />
                 Painel DJ
               </button>
@@ -411,13 +439,18 @@
 <script setup>
 import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRouter } from 'vue-router'
-import { Shield, Radio, Music, AlertTriangle, HardDrive, Search, RefreshCw, Trash2, Key, Disc, Headphones, X, Edit2, Check, ExternalLink, Volume2, VolumeX } from 'lucide-vue-next'
-import { getAdminStations, deleteStationAdmin, purgeOrphanTracksAdmin, removeTrackFromStationAdmin, getGlobalLibrary, renameTrackAdmin } from '../services/api'
+import { Shield, Radio, Music, AlertTriangle, HardDrive, Search, RefreshCw, Trash2, Key, Disc, Headphones, X, Edit2, Check, ExternalLink, Volume2, VolumeX, Lock, LogOut } from 'lucide-vue-next'
+import { getAdminStations, deleteStationAdmin, purgeOrphanTracksAdmin, removeTrackFromStationAdmin, getGlobalLibrary, renameTrackAdmin, adminLogin, getAdminToken, clearAdminToken, issueDJTokenAdmin } from '../services/api'
 import { useStationStore } from '../stores/station'
 import { saveStation } from '../services/storage'
 
 const router = useRouter()
 const store = useStationStore()
+
+const isAuthenticated = ref(!!getAdminToken())
+const loginPassword = ref('')
+const loginError = ref('')
+const loggingIn = ref(false)
 
 const stations = ref([])
 const globalTracks = ref([])
@@ -473,6 +506,43 @@ const currentListenerSongTitle = computed(() => {
   return 'Nenhuma música em reprodução'
 })
 
+async function submitLogin() {
+  loggingIn.value = true
+  loginError.value = ''
+  try {
+    await adminLogin(loginPassword.value)
+    loginPassword.value = ''
+    isAuthenticated.value = true
+    loadData()
+    loadGlobalTracks()
+  } catch (e) {
+    const status = e.response?.status
+    if (status === 401) loginError.value = 'Senha inválida.'
+    else if (status === 429) loginError.value = 'Muitas tentativas. Aguarde um minuto e tente de novo.'
+    else if (status === 503) loginError.value = 'Painel admin desabilitado no servidor (ADMIN_PASSWORD não definido).'
+    else loginError.value = 'Erro ao entrar. Tente novamente.'
+  } finally {
+    loggingIn.value = false
+  }
+}
+
+function logout(message = '') {
+  clearAdminToken()
+  stopListener()
+  isAuthenticated.value = false
+  stations.value = []
+  loginError.value = message
+}
+
+// Sessão expirada ou token inválido: volta para a tela de login.
+function handleAuthError(e) {
+  if (e?.response?.status === 401) {
+    logout('Sessão expirada. Entre novamente.')
+    return true
+  }
+  return false
+}
+
 async function loadData() {
   loading.value = true
   try {
@@ -485,6 +555,7 @@ async function loadData() {
       persistFileSize: data.persistFileSize || 0,
     }
   } catch (e) {
+    if (handleAuthError(e)) return
     actionMessage.value = 'Erro ao carregar dados de administração.'
   } finally {
     loading.value = false
@@ -534,6 +605,7 @@ async function saveTrackTitle(trackId) {
 
     cancelEditTrack()
   } catch (e) {
+    if (handleAuthError(e)) return
     actionMessage.value = 'Erro ao atualizar nome da música.'
   } finally {
     savingTrack.value = false
@@ -550,6 +622,7 @@ async function purgeOrphans() {
     await loadData()
     await loadGlobalTracks()
   } catch (e) {
+    if (handleAuthError(e)) return
     actionMessage.value = 'Erro ao purgar metadados órfãos.'
   } finally {
     purging.value = false
@@ -564,6 +637,7 @@ async function confirmDeleteStation(stationId) {
     if (activeListenerStationId.value === stationId) stopListener()
     await loadData()
   } catch (e) {
+    if (handleAuthError(e)) return
     actionMessage.value = `Erro ao excluir estação ${stationId}.`
   }
 }
@@ -574,14 +648,22 @@ async function removeTrack(stationId, trackId) {
     actionMessage.value = `Música removida da estação ${stationId}.`
     await loadData()
   } catch (e) {
+    if (handleAuthError(e)) return
     actionMessage.value = 'Erro ao remover música da estação.'
   }
 }
 
-function enterAsDJ(stationId, djToken) {
-  store.setStation(stationId, djToken, 'dj')
-  saveStation(stationId, 'dj', djToken)
-  router.push(`/radio/${stationId}`)
+// O token de DJ não vem mais na listagem: é emitido sob demanda pelo backend.
+async function enterAsDJ(stationId) {
+  try {
+    const djToken = await issueDJTokenAdmin(stationId)
+    store.setStation(stationId, djToken, 'dj')
+    saveStation(stationId, 'dj', djToken)
+    router.push(`/radio/${stationId}`)
+  } catch (e) {
+    if (handleAuthError(e)) return
+    actionMessage.value = `Erro ao gerar token de DJ para ${stationId}.`
+  }
 }
 
 function openFullListenerPage(stationId) {
@@ -672,9 +754,15 @@ function toggleMute() {
   }
 }
 
-function copyToken(token) {
-  navigator.clipboard.writeText(token)
-  actionMessage.value = 'Token DJ copiado para a área de transferência!'
+async function copyToken(stationId) {
+  try {
+    const token = await issueDJTokenAdmin(stationId)
+    await navigator.clipboard.writeText(token)
+    actionMessage.value = 'Token DJ copiado para a área de transferência!'
+  } catch (e) {
+    if (handleAuthError(e)) return
+    actionMessage.value = `Erro ao gerar token de DJ para ${stationId}.`
+  }
 }
 
 function toggleExpand(id) {
@@ -697,6 +785,7 @@ function formatBytes(bytes) {
 }
 
 onMounted(() => {
+  if (!isAuthenticated.value) return
   loadData()
   loadGlobalTracks()
 })
@@ -707,6 +796,35 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.admin-login {
+  max-width: 24rem;
+  margin: 4rem auto 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.admin-login-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.admin-login-title h2 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.admin-login-hint {
+  font-size: 0.75rem;
+  color: var(--zinc-400);
+}
+
+.admin-login-error {
+  font-size: 0.75rem;
+  color: var(--red-400);
+}
+
 .admin-page {
   padding-bottom: 6rem;
 }

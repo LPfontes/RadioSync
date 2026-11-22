@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"radio-backend/internal/auth"
+	"radio-backend/internal/security"
 	"radio-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
@@ -12,12 +13,17 @@ import (
 	gorillaWS "github.com/gorilla/websocket"
 )
 
+// O CheckOrigin padrão é o mesmo do gorilla (só mesma origem); o main.go
+// troca pela regra com allowlist via SetWebSocketOriginCheck (ADR-0005).
 var upgrader = gorillaWS.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     security.CheckWebSocketOrigin(nil),
+}
+
+// SetWebSocketOriginCheck define a validação de Origin no upgrade do WebSocket.
+func SetWebSocketOriginCheck(check func(r *http.Request) bool) {
+	upgrader.CheckOrigin = check
 }
 
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {

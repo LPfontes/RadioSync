@@ -153,11 +153,14 @@ As principais variáveis configuráveis no servidor Go:
 | Variável | Valor Padrão | Descrição |
 | :--- | :--- | :--- |
 | `PORT` | `8080` | Porta onde o servidor HTTP/WS irá escutar. |
+| `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras aceitas no CORS e no WebSocket (separadas por vírgula). Vazio = só a mesma origem. |
 | `MUSIC_DIR` | `../musicas` (ou `/app/musicas`) | Diretório onde os arquivos `.opus` convertidos são armazenados. |
 | `DJ_TOKEN_TTL` | `24h` | Validade do token de DJ. É renovada sempre que o DJ abre a sala. |
 | `DATA_DIR` | `./data` (ou `/app/data`) | Diretório onde o arquivo de estado `stations.json` é armazenado. |
 | `FRONTEND_DIR` | `../frontend/dist` (ou `/app/frontend/dist`) | Diretório contendo os arquivos estáticos compilados da SPA Vue. |
 | `JWT_SECRET` | _(aleatório por processo)_ | Chave dos tokens JWT, com no mínimo 32 caracteres (`openssl rand -hex 32`). Valores de exemplo ou curtos impedem a subida; sem a variável o servidor usa um segredo temporário e os tokens caem a cada reinício. |
+| `ADMIN_PASSWORD` | _(vazio)_ | Senha do painel `/admin`. Vazia = rotas de admin desabilitadas (`503`). |
+| `ADMIN_TOKEN_TTL` | `8h` | Validade do JWT de admin emitido no login. |
 
 ---
 
@@ -172,11 +175,19 @@ As principais variáveis configuráveis no servidor Go:
 - `GET /api/v1/stations/{stationId}/repository` — Lista as faixas do repositório da estação (Requer header `Authorization: Bearer <djToken>`).
 - `GET /api/v1/stations/{stationId}/musicas` — Lista os arquivos `.opus` existentes no servidor.
 - `GET /api/v1/library` — Lista todas as músicas da biblioteca global salvas no servidor.
-- `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência.
+- `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência (requer token de admin).
 
 ### **Administração (`/api/v1/admin`)**
 
-- `GET /api/v1/admin/stations` — Retorna resumo completo de todas as estações e métricas do `stations.json`.
+Todas as rotas abaixo, exceto o login, exigem `Authorization: Bearer <adminToken>`
+(sem token → `401`; sem `ADMIN_PASSWORD` configurado → `503`). No gateway, o
+Traefik valida o token via ForwardAuth antes de repassar a requisição, e o login
+tem limite de 5 tentativas por minuto por IP.
+
+- `POST /api/v1/admin/login` — Recebe `{ "password": "..." }` e retorna `{ token, expiresAt }`.
+- `GET /api/v1/admin/verify` — `204` se o token de admin for válido (usado pelo ForwardAuth).
+- `GET /api/v1/admin/stations` — Retorna resumo de todas as estações e métricas do `stations.json` (sem `djToken`).
+- `POST /api/v1/admin/stations/{stationId}/dj-token` — Emite, sob demanda, um token de DJ para a estação.
 - `DELETE /api/v1/admin/stations/{stationId}` — Exclui uma estação permanentemente e salva o `stations.json`.
 - `POST /api/v1/admin/purge-orphans` — Purga todos os metadados de faixas inexistentes do `stations.json`.
 - `DELETE /api/v1/admin/stations/{stationId}/tracks/{trackId}` — Remove uma faixa do repositório da estação.

@@ -1,6 +1,6 @@
 # ADR-0005: API Gateway (Traefik) com autenticação de admin e rate limiting
 
-- **Status:** Aceito (gateway já no docker-compose; regras de auth na Entrega 3)
+- **Status:** Aceito (gateway na Entrega 2; auth de admin implementada na Entrega 3)
 - **Data:** 2026-11-03
 - **Responsável:** Membro 3 (Infra / DevOps)
 - **Áreas:** Segurança, Escalabilidade
@@ -75,6 +75,29 @@ ideal é tirar o token da URL.
 - **Como vamos validar:** testes de integração garantindo `401` nas rotas
   admin sem token; teste de carga confirmando `429 Too Many Requests` acima do limite.
 
+## Implementação (Entrega 3): CORS e Origin do WebSocket
+
+- **Regra:** só a mesma origem por padrão. Origens extras entram por
+  `ALLOWED_ORIGINS` (lista separada por vírgula, sem curinga). O app é servido
+  na mesma origem da API (pelo Go, pelo gateway e pelo proxy do Vite, que
+  preservam o `Host`), então em geral a lista fica vazia.
+- **CORS:** `AllowOriginFunc` com a allowlist (com `AllowedOrigins` vazio o
+  `rs/cors` liberaria todas as origens), sem `AllowCredentials` (a autenticação
+  é por header `Bearer`, não por cookie) e só os headers `Authorization` e
+  `Content-Type`.
+- **WebSocket:** o `CheckOrigin` deixou de aceitar tudo. Aceita requisições sem
+  `Origin` (clientes que não são navegador, como k6), a mesma origem e a
+  allowlist; o resto recebe `403`, o que bloqueia Cross-Site WebSocket
+  Hijacking (uma página de outro site abrindo a conexão no navegador da vítima).
+- **Código:** `internal/security` concentra as regras, com testes de
+  normalização, CORS e handshake real do WebSocket.
+
+Validado na stack: `Origin: https://evil.example` recebe `403` no WebSocket e
+nenhum cabeçalho CORS, pelo gateway, pela porta 8080 e pelo proxy do Vite;
+mesma origem e clientes sem `Origin` recebem `101`; com
+`ALLOWED_ORIGINS=https://radio.exemplo.com`, essa origem passa no preflight e
+no WebSocket.
+
 ## Validação (Entrega 2)
 
 Subimos o `docker-compose.yml` completo localmente (Docker Engine 29) e
@@ -93,3 +116,29 @@ pelo gateway: 221 respostas `200` e 1279 `429`. Bate com a configuração
 Também confirmamos o problema 1 do contexto: `GET /api/v1/admin/stations`
 responde `200` sem nenhuma autenticação, inclusive passando pelo gateway.
 A correção fica para a Entrega 3.
+
+## Implementação (Entrega 3): autenticação do admin
+
+- **Login:** `POST /api/v1/admin/login` troca a senha (`ADMIN_PASSWORD`,
+  comparada em tempo constante) por um JWT HS256 com `role=admin` e `exp`
+  (`ADMIN_TOKEN_TTL`, padrão 8h). Sem `ADMIN_PASSWORD`, as rotas de admin
+  respondem `503`: seguro por padrão.
+- **Middleware no Go (`RequireAdmin`):** protege `/api/v1/admin/*` e
+  `/api/v1/debug`. Exige `exp` e `role=admin`, então um token de DJ não vale
+  como admin e o token de admin não vale como DJ.
+- **ForwardAuth no Traefik:** um router dedicado para as rotas de admin e
+  `/debug` consulta `/api/v1/admin/verify` antes de repassar. O Go valida de
+  novo, o que mantém a proteção para quem acessa a porta 8080 direto
+  (defesa em profundidade) e deixa o gateway pronto para quando o admin virar
+  um serviço separado (Strangler Fig).
+- **Força bruta:** o login tem rate limit próprio no gateway (5/min, burst 5).
+- **Vazamento do `djToken`:** a listagem não devolve mais o token. O painel
+  pede um token de DJ por estação, sob demanda, em
+  `POST /api/v1/admin/stations/{id}/dj-token` (registrado em log).
+- **Frontend:** o painel `/admin` tem tela de login; o token fica no
+  `sessionStorage` e um `401` devolve para o login.
+
+Validado na stack do compose, pelo gateway e pela porta 8080: sem token `401`,
+token de DJ `401`, token de admin `200`, listagem sem `djToken`, e, esgotado
+o burst de 5 logins no minuto, as tentativas seguintes pelo gateway recebem `429`. Testes em
+`internal/auth/admin_test.go` e `internal/handler/adminauth_test.go`.

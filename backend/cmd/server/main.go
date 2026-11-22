@@ -9,11 +9,11 @@ import (
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
+	"radio-backend/internal/security"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	"github.com/rs/cors"
 )
 
 func main() {
@@ -35,13 +35,12 @@ func main() {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
-	})
-	r.Use(corsHandler.Handler)
+	// CORS e Origin do WebSocket restritos (ADR-0005): mesma origem por
+	// padrão; outras origens só via ALLOWED_ORIGINS.
+	allowedOrigins := security.AllowedOrigins()
+	log.Printf("CORS/WebSocket: mesma origem + ALLOWED_ORIGINS=%v", allowedOrigins)
+	r.Use(security.CORS(allowedOrigins))
+	handler.SetWebSocketOriginCheck(security.CheckWebSocketOrigin(allowedOrigins))
 
 	musicDir := os.Getenv("MUSIC_DIR")
 	if musicDir == "" {
@@ -73,15 +72,27 @@ func main() {
 	})
 
 	r.Get("/api/v1/library", handler.GetGlobalLibrary)
-	r.Get("/api/v1/debug", handler.DebugHandler)
+	// Diagnóstico expõe caminhos e IDs de todas as estações: só para admin.
+	r.With(handler.RequireAdmin).Get("/api/v1/debug", handler.DebugHandler)
+
+	if !auth.AdminEnabled() {
+		log.Printf("ADMIN_PASSWORD não definido: rotas /api/v1/admin desabilitadas (503)")
+	}
 
 	r.Route("/api/v1/admin", func(r chi.Router) {
-		r.Get("/stations", handler.GetAdminStations)
-		r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
-		r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
-		r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
-		r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
-		r.Post("/cookies", handler.SaveCookiesAdmin)
+		r.Post("/login", handler.AdminLogin)
+
+		r.Group(func(r chi.Router) {
+			r.Use(handler.RequireAdmin)
+			r.Get("/verify", handler.AdminVerify)
+			r.Get("/stations", handler.GetAdminStations)
+			r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
+			r.Post("/stations/{stationId}/dj-token", handler.IssueDJTokenAdmin)
+			r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
+			r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
+			r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
+			r.Post("/cookies", handler.SaveCookiesAdmin)
+		})
 	})
 
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)

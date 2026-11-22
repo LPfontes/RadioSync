@@ -38,7 +38,8 @@ func getCookiesFile() string {
 		if strings.HasPrefix(strContent, "IyBOZXRzY2FwZ") {
 			decoded, err := base64.StdEncoding.DecodeString(strContent)
 			if err == nil && len(decoded) > 0 {
-				_ = os.WriteFile(cookiesPath, decoded, 0644)
+				_ = os.WriteFile(cookiesPath, decoded, 0600)
+				_ = os.Chmod(cookiesPath, 0600)
 				return cookiesPath
 			}
 		}
@@ -66,6 +67,12 @@ func cleanEnv() []string {
 }
 
 func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
+	// Barreira contra injeção de opções no yt-dlp (ver ytsafe.go).
+	youtubeURL, err := ValidateYouTubeURL(youtubeURL)
+	if err != nil {
+		return "", 0, err
+	}
+
 	cookiesPath := getCookiesFile()
 	denoPath, denoErr := exec.LookPath("deno")
 	log.Printf("[youtube] PATH='%s'", os.Getenv("PATH"))
@@ -82,7 +89,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	if cookiesPath != "" {
 		titleArgs = append(titleArgs, "--cookies", cookiesPath)
 	}
-	titleArgs = append(titleArgs, youtubeURL)
+	titleArgs = appendURL(titleArgs, youtubeURL)
 
 	titleCmd := exec.Command("yt-dlp", titleArgs...)
 	titleCmd.Env = cleanEnv()
@@ -140,7 +147,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		if st.cookies != "" {
 			args = append(args, "--cookies", st.cookies)
 		}
-		args = append(args, youtubeURL)
+		args = appendURL(args, youtubeURL)
 
 		log.Printf("[youtube] Tentando estratégia %d/%d (cookies=%v, clients='%s')", i+1, len(strategies), st.cookies != "", st.clients)
 		cmd := exec.Command("yt-dlp", args...)
