@@ -1,291 +1,219 @@
 # 📻 RadioSync — Rádio Web Sincronizada em Tempo Real
 
-**RadioSync** é uma aplicação web moderna para transmissão e escuta sincronizada de rádio online em tempo real. Permite que um **DJ** crie uma estação, faça upload de músicas (convertidas automaticamente para Opus), gerencie a fila de reprodução e sincronize os controles de reprodução (Play, Pause, Seek, Troca de Faixa) com múltiplos **Ouvintes** conectados via WebSockets.
+**RadioSync** é uma plataforma distribuída para transmissão e escuta sincronizada de rádio online em tempo real. Permite que um **DJ** crie uma estação, faça upload de músicas ou importe do YouTube (convertidas para `.opus`), gerencie a fila de reprodução e o mixer de efeitos sonoros, e sincronize os controles (`PLAY`, `PAUSE`, `SEEK`, troca de faixa) com centenas de **Ouvintes** conectados via WebSockets.
+
+> **Evolução Arquitetural (Do Monolito para Microsserviços via Strangler Fig):**  
+> O projeto nasceu como um **monolito Go em processo único** (`backend/cmd/server` — preservado para comparação na branch **`monolito`**, commit `df075d2`), onde a API REST, o Hub WebSocket, a transcodificação via FFmpeg/yt-dlp, a persistência em arquivos JSON locais (`stations.json`, `track_names.json`, `yt_cache.json`) e a entrega dos arquivos `.opus` residiam na mesma instância. Para viabilizar escalabilidade horizontal, tolerância a falhas e isolamento de carga sem interromper o funcionamento do sistema, a arquitetura foi evoluída incrementalmente aplicando o padrão **Strangler Fig** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md)): um API Gateway (**Traefik**) foi posicionado na borda e as responsabilidades críticas foram extraídas para serviços independentes e *stateless* (**Sync Service** com Redis Pub/Sub e **Station Service** com PostgreSQL + MinIO), mantendo o servidor base apenas para as rotas ainda não migradas e entrega da SPA.
 
 ---
 
-## 🚀 Tecnologias Utilizadas
+## 🚀 Arquitetura e Tecnologias Utilizadas
 
-### **Backend**
-- **Linguagem**: [Go (Golang)](https://go.dev/) (v1.22+)
-- **Router HTTP**: [chi v5](https://github.com/go-chi/chi)
-- **WebSockets**: [gorilla/websocket](https://github.com/gorilla/websocket)
-- **Autenticação**: [golang-jwt/jwt v5](https://github.com/golang-jwt/jwt)
-- **Processamento de Áudio**: [FFmpeg](https://ffmpeg.org/) (transcodificação para codec `.opus` a 96kbps VBR)
-- **Gerenciador de Ambientes**: [godotenv](https://github.com/joho/godotenv)
+### **Backend e Microsserviços (Go 1.26)**
+- **API Gateway / Borda**: [Traefik v3.6](https://traefik.io/) — roteamento Strangler Fig, load balancing, ForwardAuth administrativo e rate limiting por rota ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md), [ADR-0005](docs/adr/0005-api-gateway-seguranca.md)).
+- **Sync Service (`backend/cmd/sync`)**: gerenciamento escalável de conexões WebSocket, fan-out em tempo real via **Redis Pub/Sub**, lock distribuído de DJ com heartbeat e sincronização de relógio estilo NTP ([ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md), [ADR-0004](docs/adr/0004-sincronizacao-client-side-timestamp.md)).
+- **Station Service (`backend/cmd/station`)**: serviço stateless de estações, playlist, biblioteca global, `claim-dj`, emissão/renovação deslizante de JWT de DJ e entrega de áudio `.opus` a partir do **MinIO** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md), [ADR-0006](docs/adr/0006-persistencia-postgres-minio.md)).
+- **Importador de Dados (`backend/cmd/importer`)**: migração idempotente dos arquivos legados (`stations.json`, `track_names.json`, `tracks.json`, `yt_cache.json` e `.opus`) para PostgreSQL e MinIO.
+- **Servidor Base / Media (`backend/cmd/server`)**: upload e transcodificação de áudio com **FFmpeg** (Opus 96 kbps VBR) e **yt-dlp** (+ PO Token Provider `bgutil`), rotas administrativas e entrega da SPA.
 
-### **Frontend**
-- **Framework**: [Vue.js 3](https://vuejs.org/) (Composition API com `<script setup>`)
-- **Build Tool**: [Vite](https://vitejs.dev/)
-- **Gerenciamento de Estado**: [Pinia](https://pinia.vuejs.org/)
-- **Roteamento**: [Vue Router 4](https://router.vuejs.org/)
-- **Estilização**: [Tailwind CSS](https://tailwindcss.com/)
-- **Ícones**: [Lucide Vue Next](https://lucide.dev/)
+### **Persistência Poliglota e Mensageria**
+- **PostgreSQL 16**: persistência relacional durável de estações, catálogo global de faixas, itens ordenados da playlist, sugestões de ouvintes e cache do YouTube, com migrations SQL versionadas ([ADR-0006](docs/adr/0006-persistencia-postgres-minio.md)).
+- **MinIO (S3-compatível)**: armazenamento distribuído de objetos de áudio no bucket `musicas` via interface `ObjectStore` (`Put`, `Get`, `PresignedGetURL`), eliminando dependência de disco local ([ADR-0006](docs/adr/0006-persistencia-postgres-minio.md)).
+- **Redis 7 (AOF)**: armazenamento do estado quente de reprodução (`station:{id}:state`), lock global de DJ (`station:{id}:dj`) e barramento Pub/Sub (`station:{id}:events`) ([ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md)).
+- **RabbitMQ 3.13**: fila de jobs de transcodificação (`media.transcode`) e Dead-Letter Queue (`media.transcode.dlq`) ([ADR-0002](docs/adr/0002-transcodificacao-assincrona-fila.md)).
 
-### **Infraestrutura**
-- **Containerização**: Docker (Multi-stage build servindo a SPA Vue e a API Go em uma única imagem otimizada Alpine).
-
----
-
-## ✨ Funcionalidades Principais
-
-- 🎙️ **Criação de Estações de Rádio (DJ)**:
-  - Geração de código seguro de 6 caracteres (ex: `X7K2P9`) via `crypto/rand`.
-  - Emissão de Token JWT assinado para permissões administrativas do DJ.
-- 🎵 **Upload e Transcodificação Automática**:
-  - Aceita múltiplos formatos de áudio (`.mp3`, `.wav`, `.ogg`, `.flac`, `.aac`, `.m4a`).
-  - Conversão em tempo real no servidor para **Opus (`.opus`)**, reduzindo o consumo de banda e otimizando o stream de áudio.
-- 🔴 **Download de Músicas do YouTube (yt-dlp)**:
-  - Permite baixar o áudio de qualquer vídeo do YouTube colando o link no painel do DJ. O servidor usa o **yt-dlp** para extrair a melhor qualidade de áudio e converter diretamente em Opus.
-- 🔄 **Sincronização em Tempo Real (WebSockets)**:
-  - Eventos de `PLAY`, `PAUSE`, `SEEK` e `NEXT_TRACK` retransmitidos instantaneamente para todos os ouvintes.
-  - Sincronização automática do tempo decorrido ao entrar em uma sala em andamento.
-- 📑 **Gerenciamento de Repositório e Fila (Playlist)**:
-  - O DJ pode adicionar músicas do repositório local ou da **Biblioteca Global** do servidor à fila, remover itens ou pular faixas.
-- 🌐 **Biblioteca Global de Músicas**:
-  - Exibe todas as faixas enviadas para o servidor (independentemente de qual estação realizou o upload) com busca por título e sincronização instantânea.
-- 💾 **Persistência Atômica de Dados**:
-  - Salvamento periódico e por eventos das estações no arquivo `stations.json` utilizando escrita temporária e substituição atômica (*atomic rename*).
-- 🕒 **Histórico Local no Navegador**:
-  - Armazenamento das últimas salas visitadas no LocalStorage para acesso rápido.
+### **Frontend e Observabilidade**
+- **Frontend**: [Vue.js 3](https://vuejs.org/) (Composition API), [Vite](https://vitejs.dev/), [Pinia](https://pinia.vuejs.org/), [Vue Router 4](https://router.vuejs.org/) e Design System em Vanilla CSS (tema escuro estilo YouTube Music).
+- **Observabilidade**: [Prometheus](https://prometheus.io/) (`/metrics` nos serviços e gateway) + [Grafana](https://grafana.com/) com datasource provisionado automaticamente.
 
 ---
 
 ## 🛠️ Como Executar o Projeto
 
-### Pró-requisitos
-- **Go** >= 1.22
-- **Node.js** >= 18 e **npm**
-- **FFmpeg**, **FFprobe** e **yt-dlp** instalados e disponíveis no `PATH` do sistema.
+### 1. Ambiente Completo com Docker Compose (Recomendado)
+
+Sobe todos os serviços da arquitetura distribuída (Traefik Gateway, Sync Service, Station Service, Servidor Base/Media, Redis, RabbitMQ, PostgreSQL, MinIO, Prometheus e Grafana):
+
+```bash
+cp .env.example .env        # configure JWT_SECRET (mínimo 32 caracteres) e ADMIN_PASSWORD
+docker compose up -d --build
+```
+
+| Serviço | Endereço / Comando |
+|---|---|
+| **Aplicação (via API Gateway Traefik)** | http://localhost |
+| **Station Service (REST + Áudio MinIO via Gateway)** | http://localhost/api/v1/stations e http://localhost/api/v1/library |
+| **Sync Service (WebSockets via Gateway)** | `ws://localhost/ws/stations/{id}` |
+| **Escalar Sync Service e Station Service** | `docker compose up -d --scale sync=3 --scale station=2` |
+| **Servidor Base (acesso direto)** | http://localhost:8080 |
+| **Traefik Dashboard** (protegido por senha; gere com `./scripts/traefik-dashboard-password.sh`) | http://localhost:8081/dashboard/ |
+| **RabbitMQ Management** | http://localhost:15672 |
+| **MinIO Console** | http://localhost:9001 |
+| **Prometheus** | http://localhost:9090 |
+| **Grafana** | http://localhost:3000 |
 
 ---
 
-### 1. Executando Localmente (Desenvolvimento)
+### 2. Persistência Poliglota, Station Service e Importador Único
 
-#### **Backend**
+O **Station Service** (`backend/cmd/station`, [Dockerfile.station](Dockerfile.station)) foi extraído segundo o padrão **Strangler Fig** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md)) e implementa a arquitetura de **Persistência Poliglota** ([ADR-0006](docs/adr/0006-persistencia-postgres-minio.md)):
+
+- **Migrations Versionadas no Postgres:** No boot, `storage.RunMigrations` aplica automaticamente os scripts SQL embutidos em `backend/internal/storage/migrations/` (`0001_initial_schema.up.sql`), criando as tabelas `tracks`, `stations`, `station_tracks`, `playlist_items`, `suggestions`, `youtube_cache` e `schema_migrations`.
+- **Importador Único e Idempotente:** Na inicialização (ou manualmente via `go run ./cmd/importer`), o pacote `internal/importer` lê `stations.json`, `track_names.json`, `tracks.json` e `yt_cache.json`, faz `UPSERT` no PostgreSQL e envia todos os arquivos `.opus` locais para o bucket `musicas` no MinIO. O antigo `persist.go` foi removido.
+- **Áudio Servido do MinIO sem Disco Local:** As requisições a `/musicas/{filename}` são atendidas a partir do `ObjectStore` no MinIO (via streaming HTTP com suporte a `Range` ou redirecionamento `302` / JSON de URL pré-assinada com `?presign=1`).
+
+Para escalar horizontalmente o Station Service e o Sync Service:
 ```bash
+docker compose up -d --scale station=2 --scale sync=3
+```
+
+---
+
+### 3. Executando Localmente (Desenvolvimento)
+
+#### **Pré-requisitos**
+- **Go** >= 1.26
+- **Node.js** >= 20 e **npm**
+- **PostgreSQL**, **Redis** e **MinIO** (podem ser subidos via `docker compose up -d postgres redis minio`)
+- **FFmpeg**, **FFprobe** e **yt-dlp** no `PATH` (para transcodificação local)
+
+```bash
+# Subir dependências de dados no Docker
+docker compose up -d postgres redis minio
+
+# Station Service (:8083)
+cd backend
+go run ./cmd/station/main.go
+
+# Sync Service (:8082)
+cd backend
+go run ./cmd/sync/main.go
+
+# Servidor Base (:8080)
 cd backend
 go run ./cmd/server/main.go
-```
-*O backend estará rodando em `http://localhost:8080`.*
 
-#### **Frontend**
-```bash
+# Frontend (:5173)
 cd frontend
 npm install
 npm run dev
 ```
-*O frontend estará rodando em `http://localhost:5173`.*
 
 ---
 
-### 2. Executando via Docker (Produção / Produção Local)
+### 4. Deploy Automatizado com Rollback
 
-O projeto possui um [Dockerfile](Dockerfile) multi-stage que compila o frontend, o backend e instala as dependências do FFmpeg e yt-dlp na imagem final.
-
-#### **Construir a imagem Docker:**
-```bash
-docker build -t radiosync .
-```
-
-#### **Executar o container:**
-```bash
-docker run -d -p 8080:8080 --name radiosync radiosync
-```
-
-Acesse a aplicação no navegador em `http://localhost:8080`.
-
----
-
-### 3. Ambiente completo com Docker Compose (recomendado)
-
-Sobe a aplicação junto com a infraestrutura da arquitetura distribuída
-(API Gateway, Redis, RabbitMQ, PostgreSQL, MinIO, Prometheus e Grafana):
+O deploy utiliza imagens imutáveis (tag = SHA do commit), verifica o `/healthz` com a versão nova e executa rollback automático caso a validação falhe ([ADR-0007](docs/adr/0007-estrategia-de-deployment.md)):
 
 ```bash
-cp .env.example .env        # e troque o JWT_SECRET
-docker compose up -d --build
-```
-
-| Serviço | Endereço |
-|---|---|
-| Aplicação (via API Gateway) | http://localhost |
-| Aplicação (direto) | http://localhost:8080 |
-| Sync Service (WebSockets via Gateway) | ws://localhost/ws/stations/{id} |
-| Sync Service réplicas (escala) | `docker compose up -d --scale sync=3` |
-| Traefik dashboard (com senha; gere com `./scripts/traefik-dashboard-password.sh` e rode `docker compose restart gateway`) | http://localhost:8081/dashboard/ |
-| RabbitMQ management | http://localhost:15672 |
-| MinIO console | http://localhost:9001 |
-| Prometheus | http://localhost:9090 |
-| Grafana | http://localhost:3000 |
-
-### Escalabilidade do Sync Service
-
-O **Sync Service** (`backend/cmd/sync`) foi extraído seguindo o padrão **Strangler Fig** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md)). O Traefik roteia todo o tráfego de `/ws/*` com load balancing automático entre réplicas. Os eventos de reprodução (`PLAY`, `PAUSE`, `SEEK`, `STATE_UPDATE`, `MIXER_*`) são sincronizados em tempo real via **Redis Pub/Sub** no canal `station:{id}:events` ([ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md)), enquanto o estado do player (`PlaybackState`) reside no Redis (`station:{id}:state`), permitindo que novas réplicas atendam conexões instantaneamente. O lock global de DJ (`station:{id}:dj`) com TTL e heartbeat garante a regra de 1 DJ por estação entre réplicas, e o algoritmo estilo NTP compensa desvios de relógio dos clientes ([ADR-0004](docs/adr/0004-sincronizacao-client-side-timestamp.md)).
-
-Para escalar horizontalmente:
-```bash
-docker compose up -d --scale sync=3
+./scripts/deploy.sh           # constrói <imagem>:<sha> e atualiza a versão
+./scripts/deploy.sh <sha>     # faz rollback/deploy para um SHA específico
+curl -s localhost:8080/healthz
 ```
 
 ---
 
-### Deploy de uma nova versão
-
-O deploy usa imagem imutável (tag = SHA do commit), espera o `/healthz`
-responder com a versão nova e volta sozinho para a anterior se ela falhar
-([ADR-0007](docs/adr/0007-estrategia-de-deployment.md)):
-
-```bash
-git pull                      # no servidor, já com o commit que vai para o ar
-./scripts/deploy.sh           # constrói <imagem>:<sha> e troca a versão
-./scripts/deploy.sh <sha>     # volta (ou vai) para uma versão específica
-curl -s localhost:8080/healthz   # {"status":"ok","version":"<sha>",...}
-```
-
-O histórico fica em `deploy/history.log`. Medido localmente: cerca de 1,5 s de
-indisponibilidade por deploy; ouvintes continuam tocando e o WebSocket
-reconecta sozinho em ~3 s. Uma versão que quebra na subida volta para a
-anterior em ~2,5 s.
-
----
-
-### 4. Testes
+### 5. Testes Automatizados e Pipeline CI / DevSecOps
 
 ```bash
 cd backend
-go test -race ./...
+go vet ./...
+go test -v -race ./...
 ```
 
-O CI (GitHub Actions, `.github/workflows/ci.yml`) roda `go vet`, os testes com
-detector de race condition, o build do frontend, a validação do
-`docker-compose.yml` e o build da imagem Docker em todo push e pull request.
-
-O workflow de segurança (`.github/workflows/security.yml`, [ADR-0008](docs/adr/0008-devsecops-pipeline.md))
-roda em todo pull request, em push para `dev`/`main` e toda segunda-feira:
-`govulncheck` e `npm audit` (dependências), gitleaks (segredos no histórico),
-Trivy (imagem e configuração), gosec (análise estática) e SBOM SPDX da imagem.
-Os resultados aparecem em **Security → Code scanning**, e o SBOM fica nos
-artefatos da execução.
+- **Testes Unitários e de Contrato:** pacotes `auth`, `model`, `handler`, `media`, `security`, `storage`, `importer`, `ws`.
+- **Testes de Integração e Resiliência:**
+  - `INT-01`, `RES-01`, `RES-04`: `backend/internal/syncservice/integration_test.go` (fan-out Pub/Sub < 200 ms, queda de réplica < 5 s, reconexão ao Redis).
+  - `INT-04`, `INT-05`, `RES-05`: `backend/internal/stationservice/integration_test.go` (consistência de estação entre Réplica A e Réplica B, paridade Strangler Fig com o monolito e degradação graciosa com Postgres fora do ar).
+- **CI (`.github/workflows/ci.yml`):** executa `go vet`, `go test -race`, build do frontend, validação do `docker-compose.yml` e build Docker.
+- **DevSecOps (`.github/workflows/security.yml`, [ADR-0008](docs/adr/0008-devsecops-pipeline.md)):** executa `govulncheck`, `npm audit`, `gitleaks`, `gosec`, `Trivy` (imagem e configuração) e gera SBOM SPDX com `Syft`.
 
 ---
 
-## 🏛️ Documentação de Arquitetura
+## 🏛️ Índice Completo da Documentação de Arquitetura
 
 | Documento | Conteúdo |
 |---|---|
-| [C4 — Nível 1: Contexto](docs/c4/01-contexto.md) | Atores e sistemas externos |
-| [C4 — Nível 2: Containers](docs/c4/02-containers.md) | Situação atual e arquitetura-alvo |
-| [ADRs](docs/adr/) | Registros de decisões arquiteturais (0001–0006) |
-| [Stack tecnológico](docs/stack.md) | Tecnologias e justificativas |
-| [Padrões arquiteturais](docs/padroes.md) | Padrões da disciplina aplicados ao RadioSync |
-| [Plano de testes](docs/plano-de-testes.md) | Unitários, integração, carga e resiliência |
-| [Divisão de responsabilidades](docs/divisao-responsabilidades.md) | Frentes de cada integrante |
+| [C4 — Nível 1: Contexto](docs/c4/01-contexto.md) | Atores (DJ, Ouvinte, Admin) e sistemas externos (YouTube) |
+| [C4 — Nível 2: Containers](docs/c4/02-containers.md) | Arquitetura de containers (Gateway, Sync, Station, Media/Worker, Redis, Postgres, MinIO, RabbitMQ) |
+| [ADR-0000 — Template](docs/adr/0000-template.md) | Modelo padrão para registro de decisões arquiteturais |
+| [ADR-0001 — Redis Pub/Sub Fan-out](docs/adr/0001-redis-pubsub-fanout-websocket.md) | Escalabilidade horizontal de WebSockets e estado quente no Redis |
+| [ADR-0002 — Transcodificação Assíncrona](docs/adr/0002-transcodificacao-assincrona-fila.md) | Fila RabbitMQ, Worker idempotente, Retry com backoff, DLQ e Circuit Breaker |
+| [ADR-0003 — Migração Strangler Fig](docs/adr/0003-migracao-strangler-fig.md) | Estratégia de extração incremental e tabela de rotas migradas no gateway |
+| [ADR-0004 — Sincronização Client-Side](docs/adr/0004-sincronizacao-client-side-timestamp.md) | Sincronização por timestamp e compensação de offset de relógio estilo NTP |
+| [ADR-0005 — API Gateway e Segurança](docs/adr/0005-api-gateway-seguranca.md) | Traefik na borda, JWT HS256, ForwardAuth admin, CORS/Origin e Rate Limiting |
+| [ADR-0006 — Persistência Poliglota](docs/adr/0006-persistencia-postgres-minio.md) | PostgreSQL 16 (metadados), MinIO (áudio `.opus`) e Redis (estado quente) |
+| [ADR-0007 — Estratégia de Deployment](docs/adr/0007-estrategia-de-deployment.md) | Imagens com tag imutável por SHA, `/healthz` e rollback automatizado |
+| [ADR-0008 — Pipeline DevSecOps](docs/adr/0008-devsecops-pipeline.md) | Verificações shift-left com govulncheck, npm audit, gitleaks, gosec, Trivy e SBOM |
+| [Stack Tecnológico](docs/stack.md) | Tecnologias adotadas e justificativas arquiteturais |
+| [Padrões Arquiteturais](docs/padroes.md) | Padrões da disciplina aplicados ao RadioSync |
+| [Plano de Testes](docs/plano-de-testes.md) | Especificação dos testes unitários, integração (`INT-*`), carga (`LOAD-*`) e resiliência (`RES-*`) |
+| [Divisão de Responsabilidades](docs/divisao-responsabilidades.md) | Frentes e entregáveis de cada um dos 5 integrantes |
 
 ---
 
 ## ⚙️ Variáveis de Ambiente
 
-As principais variáveis configuráveis no servidor Go:
-
 | Variável | Valor Padrão | Descrição |
 | :--- | :--- | :--- |
-| `PORT` | `8080` | Porta onde o servidor HTTP/WS irá escutar. |
-| `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras aceitas no CORS e no WebSocket (separadas por vírgula). Vazio = só a mesma origem. |
-| `MUSIC_DIR` | `../musicas` (ou `/app/musicas`) | Diretório onde os arquivos `.opus` convertidos são armazenados. |
-| `DJ_TOKEN_TTL` | `24h` | Validade do token de DJ. É renovada sempre que o DJ abre a sala. |
-| `DATA_DIR` | `./data` (ou `/app/data`) | Diretório onde o arquivo de estado `stations.json` é armazenado. |
-| `FRONTEND_DIR` | `../frontend/dist` (ou `/app/frontend/dist`) | Diretório contendo os arquivos estáticos compilados da SPA Vue. |
-| `JWT_SECRET` | _(aleatório por processo)_ | Chave dos tokens JWT, com no mínimo 32 caracteres (`openssl rand -hex 32`). Valores de exemplo ou curtos impedem a subida; sem a variável o servidor usa um segredo temporário e os tokens caem a cada reinício. |
-| `ADMIN_PASSWORD` | _(vazio)_ | Senha do painel `/admin`. Vazia = rotas de admin desabilitadas (`503`). |
-| `ADMIN_TOKEN_TTL` | `8h` | Validade do JWT de admin emitido no login. |
-
----
-
-## 📡 Endpoints da API REST e WebSockets
-
-### **API REST (`/api/v1`)**
-
-- `POST /api/v1/stations` — Cria uma nova estação e retorna `{ stationId, djToken }`.
-- `GET /api/v1/stations/{stationId}` — Retorna o estado atual, a playlist e o repositório da estação.
-- `POST /api/v1/stations/{stationId}/upload` — Realiza upload de arquivo de áudio (Requer header `Authorization: Bearer <djToken>`).
-- `POST /api/v1/stations/{stationId}/youtube` — Baixa e converte o áudio de um link do YouTube via `yt-dlp` (Requer header `Authorization: Bearer <djToken>`).
-- `GET /api/v1/stations/{stationId}/repository` — Lista as faixas do repositório da estação (Requer header `Authorization: Bearer <djToken>`).
-- `GET /api/v1/stations/{stationId}/musicas` — Lista os arquivos `.opus` existentes no servidor.
-- `GET /api/v1/library` — Lista todas as músicas da biblioteca global salvas no servidor.
-- `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência (requer token de admin).
-
-### **Administração (`/api/v1/admin`)**
-
-Todas as rotas abaixo, exceto o login, exigem `Authorization: Bearer <adminToken>`
-(sem token → `401`; sem `ADMIN_PASSWORD` configurado → `503`). No gateway, o
-Traefik valida o token via ForwardAuth antes de repassar a requisição, e o login
-tem limite de 5 tentativas por minuto por IP.
-
-- `POST /api/v1/admin/login` — Recebe `{ "password": "..." }` e retorna `{ token, expiresAt }`.
-- `GET /api/v1/admin/verify` — `204` se o token de admin for válido (usado pelo ForwardAuth).
-- `GET /api/v1/admin/stations` — Retorna resumo de todas as estações e métricas do `stations.json` (sem `djToken`).
-- `POST /api/v1/admin/stations/{stationId}/dj-token` — Emite, sob demanda, um token de DJ para a estação.
-- `DELETE /api/v1/admin/stations/{stationId}` — Exclui uma estação permanentemente e salva o `stations.json`.
-- `POST /api/v1/admin/purge-orphans` — Purga todos os metadados de faixas inexistentes do `stations.json`.
-- `DELETE /api/v1/admin/stations/{stationId}/tracks/{trackId}` — Remove uma faixa do repositório da estação.
-
-### **WebSockets (`/ws`)**
-
-- `WS /ws/stations/{stationId}` — Conexão WebSocket para a estação. O DJ se autentica pelo subprotocolo, nunca pela URL (que vai para os logs de acesso):
-  ```js
-  new WebSocket(url, ['radiosync.v1', `radiosync.auth.${djToken}`])
-  ```
-  O servidor responde com o subprotocolo `radiosync.v1`. Sem token válido, a conexão entra como ouvinte.
-
-#### **Mensagens Enviadas pelo DJ (`IncomingMessage`):**
-- `{ "type": "PLAY" }` — Inicia a reprodução.
-- `{ "type": "PAUSE" }` — Pausa a reprodução.
-- `{ "type": "SEEK", "data": { "position": 45.5 } }` — Altera o tempo da música.
-- `{ "type": "NEXT_TRACK" }` — Pula para a próxima faixa da playlist.
-- `{ "type": "ADD_TO_PLAYLIST", "data": { "trackId": "..." } }` — Adiciona música à fila.
-- `{ "type": "REMOVE_FROM_PLAYLIST", "data": { "trackId": "..." } }` — Remove música da fila.
-- `{ "type": "SYNC_REQUEST" }` — Solicita sincronização imediata de tempo.
-
-#### **Mensagens Transmitidas pelo Servidor (`OutgoingMessage`):**
-- `{ "type": "STATE_UPDATE", "state": { ... } }` — Atualizações de estado do player (reproduzindo, música atual, tempo decorrido).
-- `{ "type": "PLAYLIST_UPDATED", "playlist": [ ... ] }` — Fila de reprodução atualizada.
-- `{ "type": "SYNC", "position": 12.4 }` — Resposta de sincronização precisa de tempo.
+| `PORT` | `8080` / `8082` / `8083` | Porta HTTP do serviço (`server`, `sync`, `station`). |
+| `JWT_SECRET` | _(obrigatório em prod)_ | Segredo HS256 dos tokens JWT, com no mínimo 32 caracteres (`openssl rand -hex 32`). |
+| `DJ_TOKEN_TTL` | `24h` | Validade do token de DJ (com renovação deslizante ao abrir a sala). |
+| `ADMIN_PASSWORD` | _(vazio = 503)_ | Senha do painel `/admin`. Quando vazia, desabilita as rotas administrativas (`503`). |
+| `ADMIN_TOKEN_TTL` | `8h` | Validade do JWT administrativo emitido no login. |
+| `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras permitidas no CORS e no handshake WebSocket (separadas por vírgula). |
+| `DATABASE_URL` | `postgres://radiosync:...@postgres:5432/radiosync?sslmode=disable` | String de conexão do PostgreSQL 16 usada pelo Station Service e pelo Importador. |
+| `S3_ENDPOINT` | `http://minio:9000` | Endpoint do servidor MinIO / S3. |
+| `S3_BUCKET` | `musicas` | Nome do bucket no MinIO onde os arquivos `.opus` são armazenados. |
+| `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `radiosync` / `radiosync123` | Credenciais de acesso ao MinIO. |
+| `AUDIO_DELIVERY_MODE` | `proxy` | Modo de entrega em `/musicas/{filename}`: `proxy` (stream direto do MinIO) ou `presigned` (redirect `302` para URL pré-assinada). |
+| `REDIS_URL` | `redis://redis:6379/0` | Endereço do Redis para estado quente, lock de DJ e Pub/Sub. |
+| `AMQP_URL` | `amqp://radiosync:...@rabbitmq:5672/` | Endereço do RabbitMQ para fila de transcodificação de mídia. |
+| `DATA_DIR` / `MUSIC_DIR` | `/app/data` / `/app/musicas` | Diretórios lidos pelo importador na migração dos arquivos JSON e `.opus` legados. |
 
 ---
 
 ## 📂 Estrutura de Diretórios
 
-```
-radio/
+```text
+RadioSync/
+├── .github/workflows/
+│   ├── ci.yml                          # Pipeline CI (go vet, go test -race, build frontend e docker)
+│   └── security.yml                    # Pipeline DevSecOps (govulncheck, npm audit, gitleaks, gosec, Trivy, SBOM)
 ├── backend/
 │   ├── cmd/
-│   │   └── server/
-│   │       └── main.go                 # Ponto de entrada do servidor HTTP/WS
+│   │   ├── importer/main.go            # CLI do importador único (JSONs + .opus -> Postgres + MinIO)
+│   │   ├── server/main.go              # Servidor base (Media, Admin e arquivos estáticos da SPA)
+│   │   ├── station/main.go             # Station Service extraído (Postgres + MinIO + Redis)
+│   │   └── sync/main.go                # Sync Service extraído (WebSockets + Redis Pub/Sub)
 │   ├── internal/
-│   │   ├── auth/                       # Geração e validação de tokens JWT
-│   │   ├── handler/                    # Handlers REST, WebSocket e Persistência
-│   │   ├── media/                      # Transcodificação e leitura de duração via FFmpeg
-│   │   ├── model/                      # Modelos de Estação, Faixas e Playback
-│   │   └── ws/                         # Hub WebSocket e gerenciamento de Clientes
+│   │   ├── auth/                       # Geração/validação JWT de DJ e Admin
+│   │   ├── handler/                    # Handlers REST, entrega de áudio do MinIO e middlewares
+│   │   ├── importer/                   # Importador idempotente de stations.json, track_names.json e yt_cache.json
+│   │   ├── media/                      # Wrappers FFmpeg, ffprobe e yt-dlp (com proteção contra argument injection)
+│   │   ├── metrics/                    # Coletores e endpoint Prometheus (/metrics)
+│   │   ├── model/                      # Modelos de domínio (Station, Track, PlaybackState, SongSuggestion, Mixer)
+│   │   ├── security/                   # Validação de CORS e Origin de WebSocket
+│   │   ├── stationservice/             # Implementação do Station Service e testes INT-04, INT-05 e RES-05
+│   │   ├── storage/                    # Interfaces Repository/ObjectStore, Postgres, MinIO e migrations SQL
+│   │   ├── syncservice/                # Engine distribuída do Sync Service e testes INT-01, RES-01 e RES-04
+│   │   └── ws/                         # Cliente/Hub WebSocket e estimativa de offset de relógio NTP
 │   ├── go.mod
 │   └── go.sum
-├── frontend/
-│   ├── src/
-│   │   ├── assets/                     # Estilos globais
-│   │   ├── components/                 # Componente Player de Áudio
-│   │   ├── composables/                # Hooks reativos (usePlayer, useWebSocket)
-│   │   ├── router/                     # Configuração de rotas (Home, DJDashboard, Listen)
-│   │   ├── services/                   # Chamadas Axios e LocalStorage
-│   │   ├── stores/                     # Estado global da Estação (Pinia)
-│   │   ├── views/                      # Páginas da aplicação
-│   │   ├── App.vue
-│   │   └── main.js
-│   ├── package.json
-│   └── vite.config.js
-├── musicas/                            # Armazenamento de arquivos de áudio em Opus
-├── Dockerfile                          # Build multi-stage para deploy unificado
-├── Plano de Arquitetura.md
+├── docs/
+│   ├── adr/                            # Architecture Decision Records (0000 a 0008)
+│   ├── c4/                             # Diagramas C4 Nível 1 e Nível 2 em Mermaid
+│   ├── divisao-responsabilidades.md
+│   ├── padroes.md
+│   ├── plano-de-testes.md
+│   └── stack.md
+├── frontend/                           # SPA Vue 3 + Vite + Pinia
+├── infra/                              # Configurações de Traefik, Prometheus e Grafana
+├── scripts/                            # Scripts de deploy com rollback e geração de senha do Traefik
+├── Dockerfile                          # Build multi-stage do servidor base + frontend
+├── Dockerfile.station                  # Build multi-stage enxuto do Station Service + Importer
+├── Dockerfile.sync                     # Build multi-stage enxuto do Sync Service
+├── docker-compose.yml                  # Orquestração completa da arquitetura distribuída
 └── README.md
 ```
 
@@ -301,6 +229,7 @@ radio/
 | Claude (Anthropic) | Entrega 2: rascunho dos ADRs 0001–0006, diagramas C4 em Mermaid, plano de testes, `docker-compose.yml` com a infraestrutura, workflow de CI e testes unitários Go | Recebeu o documento do projeto final e o link do repositório; leu o código atual e gerou os artefatos a partir dele | Os testes encontraram um bug real em `ExtractYouTubeURL` (corrigido). A equipe revisou os ADRs e ajustou: _descrever aqui o que foi alterado ou descartado_ |
 | Gemini (Google DeepMind), via Antigravity — Nathan (Membro 1) | Entrega 3, frente do Sync Service (WebSocket e sincronização distribuída): extração do binário `backend/cmd/sync` e serviço `sync` escalável no compose (`--scale sync=N`), fan-out entre réplicas via Redis Pub/Sub (`station:{id}:events`, ADR-0001), estado quente do `PlaybackState` no Redis (`station:{id}:state`), lock global de 1 DJ por estação com TTL e heartbeat (`station:{id}:dj`), algoritmo client-side estilo NTP para estimativa e compensação de offset de relógio (ADR-0004) no backend (`ws.EstimateClockOffset`) e frontend (`usePlayer.js` / `useWebSocket.js`), reconexão transparente, retenção de segurança de subprotocolo e CORS/Origin, pacote de observabilidade com Prometheus (`internal/metrics`), testes unitários de pubsub e offset, e testes automatizados de integração INT-01 (< 200 ms), RES-01 (< 5 s) e RES-04 (reinício do Redis) | Guiada com os requisitos da Entrega 3, especificações dos ADRs 0001, 0003 e 0004 e contratos de dependência com as demais frentes (Membro 3 no gateway, Membro 5 nas métricas e Membro 4 no storage). Foi solicitado implementar a extração completa do serviço com testes automatizados executáveis com race detector | **Funcionou:** projetou e implementou com precisão a arquitetura de fan-out com supressão de auto-mensagens (`senderId`), testes automatizados INT-01 (latência medida de 1,1 ms) e RES-01 (reconexão medida em 1,7 ms), e o algoritmo NTP eliminou completamente distorções de playback causadas por relógios locais desajustados. **Precisou ser corrigido:** o design inicial colocou a engine dentro de `internal/ws`, o que gerou ciclo de importação com `internal/model` e `internal/handler` (resolvido extraindo a camada de orquestração para `internal/syncservice`), e a primeira versão do mock de broker para testes unitários precisou de ajuste para rastrear o ID de cada assinante |
 | Claude (Anthropic), via Claude Code — Gabriel Ribeiro (Membro 3) | Entrega 3, frente de Segurança, DevSecOps e Deployment (#17): auth do admin com JWT e ForwardAuth, CORS e `Origin` do WebSocket, validação do `JWT_SECRET` e expiração do token de DJ, token fora da URL do WebSocket, rate limit por rota, senha do dashboard do Traefik, correção da injeção de argumentos no yt-dlp, workflow `security.yml`, ADR-0007, ADR-0008, `scripts/deploy.sh` e `scripts/traefik-dashboard-password.sh`, com testes Go de cada item. Também ajudou a dividir a Entrega 3 nas issues #15 a #19 | Em sessões no próprio repositório, com o documento do projeto e a issue como contexto; pedi um item por vez, cada um em PR para `dev`. A IA subia a stack local com Docker Compose e testava cada mudança (curl, navegador, clientes WebSocket) antes de abrir o PR | **Funcionou:** os scanners que ela configurou acharam uma falha crítica real (a URL do YouTube virava opção do yt-dlp) e 21 vulnerabilidades da biblioteca padrão do Go. **Precisou ser corrigido:** várias suposições dela estavam erradas e só caíram nos testes. Ela achou que o restart perdia até 30 s de estado (não perdia); mediu 0,4 s de deploy quando o gateway ficava ~10 s sem a versão nova; afirmou que o Traefik relia a senha do dashboard sozinho (não relê); o script de senha deixava a senha aparecer na tela; e o govulncheck passou na máquina local e falhou no CI. **Descartado:** blue-green e canary por enquanto, por causa do estado em memória (ADR-0007). Os PRs desta frente foram mergeados sem a aprovação de outro membro, por decisão minha, para cumprir o prazo |
+| Gemini (Google DeepMind), via Antigravity — Luiz Paulo (Membro 4) | Entrega 3, frente de Dados e Station Service (#18): definição dos contratos `storage.Repository` e `storage.ObjectStore` (`backend/internal/storage`), schema PostgreSQL com migrations versionadas via `embed.FS` (`0001_initial_schema.up.sql` / `.down.sql`), implementação do `PostgresRepository` e do `MinIOObjectStore` (bucket `musicas` com `Put`, `Get` e `PresignedGetURL` via AWS Signature V4), importador único e idempotente (`backend/internal/importer` e `backend/cmd/importer`) para `stations.json`, `track_names.json`, `yt_cache.json` e arquivos `.opus`, entrega de áudio `/musicas/*` diretamente do MinIO sem disco local, extração do microsserviço `backend/cmd/station` (`Dockerfile.station`) com roteamento Strangler Fig no Traefik (`docker-compose.yml`), remoção do `persist.go`, testes automatizados `INT-04`, `INT-05` e `RES-05`, atualização dos ADRs 0003 e 0006 e consolidação deste README | Orientada a partir do escopo da Frente 4 (`docs/divisao-responsabilidades.md`, `docs/plano-de-testes.md`, ADR-0003 e ADR-0006), dividindo o trabalho em 5 etapas/commits incrementais e validando cada etapa com `go vet` e `go test -race ./...` | **Funcionou:** estruturou os contratos `Repository` e `ObjectStore` com adapters em memória e reais, implementou o protocolo S3 Signature V4 em Go puro (evitando dependências transitivas que poderiam quebrar o gate do `govulncheck` no CI), garantiu idempotência no importador e validou os cenários `INT-04`, `INT-05` e `RES-05` com testes automatizados. **Precisou ser corrigido:** no ambiente Docker Compose local o navegador acessa `localhost` e não resolve o host interno `http://minio:9000` de uma URL pré-assinada direta; por isso o handler `/musicas/{filename}` foi ajustado para suportar streaming proxy direto do MinIO por padrão (sem usar disco local) além de URL pré-assinada (`?presign=1` / `AUDIO_DELIVERY_MODE=presigned`), e as regras do Traefik precisaram excluir explicitamente as sub-rotas `/(upload|youtube|cookies.*)` do router `station-api` para não interceptar as rotas da frente de mídia |
 
 ---
 

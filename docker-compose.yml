@@ -53,6 +53,63 @@ services:
       - traefik.http.routers.sync.priority=100
       - traefik.http.services.sync.loadbalancer.server.port=8082
 
+  # Station Service: extraído do monolito (Strangler Fig, ADR-0003, ADR-0006).
+  # Gerencia estações, playlist, biblioteca global, claim-dj (PostgreSQL + Redis)
+  # e entrega de áudio .opus diretamente do MinIO sem depender de disco local.
+  # Escala horizontalmente com: docker compose up -d --scale station=N
+  station:
+    build:
+      context: .
+      dockerfile: Dockerfile.station
+    image: ${RADIOSYNC_STATION_IMAGE:-lpfonts/radiosync-station}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      - PORT=8083
+      - APP_VERSION=${IMAGE_TAG:-dev}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
+      - DJ_TOKEN_TTL=${DJ_TOKEN_TTL:-24h}
+      - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=postgres://${POSTGRES_USER:-radiosync}:${POSTGRES_PASSWORD:-radiosync}@postgres:5432/${POSTGRES_DB:-radiosync}?sslmode=disable
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=musicas
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-radiosync}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-radiosync123}
+      - DATA_DIR=/app/data
+      - MUSIC_DIR=/app/musicas
+    volumes:
+      - ./musicas:/app/musicas:ro
+      - ./data:/app/data:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.station.loadbalancer.server.port=8083
+      # Criar estação -> Station Service (com rate limit de 10/min, burst 5)
+      - traefik.http.routers.station-create.rule=Method(`POST`) && (Path(`/api/v1/stations`) || Path(`/api/v1/stations/`))
+      - traefik.http.routers.station-create.entrypoints=web
+      - traefik.http.routers.station-create.priority=95
+      - traefik.http.routers.station-create.service=station
+      - traefik.http.routers.station-create.middlewares=create-station-ratelimit
+      # Assumir DJ -> Station Service (com rate limit de 10/min, burst 5)
+      - traefik.http.routers.station-claim-dj.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/claim-dj$`)
+      - traefik.http.routers.station-claim-dj.entrypoints=web
+      - traefik.http.routers.station-claim-dj.priority=95
+      - traefik.http.routers.station-claim-dj.service=station
+      - traefik.http.routers.station-claim-dj.middlewares=claim-dj-ratelimit
+      # Rotas /api/v1/stations* (exceto upload/youtube/cookies do Media Service), /api/v1/library e /musicas/*
+      - traefik.http.routers.station-api.rule=(PathPrefix(`/api/v1/stations`) && !PathRegexp(`^/api/v1/stations/[^/]+/(upload|youtube|cookies.*)$`)) || Path(`/api/v1/library`) || PathPrefix(`/musicas/`)
+      - traefik.http.routers.station-api.entrypoints=web
+      - traefik.http.routers.station-api.priority=85
+      - traefik.http.routers.station-api.service=station
+      - traefik.http.routers.station-api.middlewares=api-ratelimit
+
   radiosync:
     build: .
     # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.
