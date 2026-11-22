@@ -25,8 +25,25 @@ entrada para redirecionar rotas.
 
 1. Usar **Traefik** como API Gateway e load balancer, com descoberta automática
    dos containers via labels do Docker.
-2. No gateway: **rate limiting** (já configurado: 50 req/s, burst 100) e,
-   na Entrega 3, um limite mais rígido para `POST /stations`, `/upload` e `/youtube`.
+2. No gateway: **rate limiting** global (50 req/s, burst 100) e, na Entrega 3,
+   limites por rota, por IP, nas rotas caras ou abusáveis:
+
+   | Rota | Limite | Por quê |
+   |---|---|---|
+   | `POST /api/v1/stations` | 10/min, burst 5 | Criação em massa de salas |
+   | `POST .../upload` e `.../youtube` | 6/min, burst 3; no máximo 2 em andamento; corpo até 100 MB (`413`) | CPU do FFmpeg/yt-dlp e disco |
+   | `POST .../claim-dj` | 10/min, burst 5 | Tomar a bancada em loop |
+   | Demais rotas | global | Leitura e WebSocket não podem ser travados |
+
+   O `429` vem com `Retry-After`, e o frontend mostra "tente de novo em N s".
+   Medido na stack, pelo gateway: 12 `POST /stations` seguidos dão 5 `201` e
+   7 `429` (LOAD-04); 8 `claim-dj` dão 5 e 3; 6 uploads dão 3 e 3; o 3º upload
+   simultâneo do mesmo IP recebe `429` na hora; 101 MB recebem `413`; 30 `GET`
+   da estação passam todos.
+   **Trade-off:** a porta 8080 do app continua publicada e não passa pelo
+   gateway, então quem a acessa direto não tem esses limites (a mesma rajada
+   deu 12 `201`). Em produção a 8080 deve ficar só em `127.0.0.1` ou fora da
+   rede pública; isso entra na estratégia de deployment (ADR-0007).
 3. Proteger `/api/v1/admin/*` com um JWT de papel `admin` (middleware no Go,
    validado também no gateway via ForwardAuth) e **remover o `djToken`** da
    resposta de listagem.
