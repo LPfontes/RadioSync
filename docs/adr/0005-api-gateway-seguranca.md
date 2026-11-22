@@ -44,6 +44,29 @@ entrada para redirecionar rotas.
 | Kong | Plugins de auth prontos | Precisa de banco próprio; pesado para o projeto |
 | Sem gateway (só middlewares no Go) | Menos infra | Cada serviço novo reimplementa auth/limite; não há ponto para o Strangler Fig |
 
+## Implementação (Entrega 3): token de DJ e JWT_SECRET
+
+Problemas encontrados no código: o token de DJ não tinha `exp` (um token
+vazado valia para sempre) e, sem `JWT_SECRET`, o servidor assinava com o valor
+fixo `dev-secret-change-in-production`, que está no repositório público. Com
+ele qualquer pessoa forja um token de DJ para qualquer estação.
+
+- **`JWT_SECRET` validado na subida:** valores de exemplo conhecidos ou com
+  menos de 32 caracteres fazem o servidor abortar com uma mensagem dizendo
+  como gerar um. Sem a variável, o servidor usa um segredo aleatório gerado no
+  processo (nunca um valor fixo) e avisa no log que os tokens caem a cada
+  reinício. Isso mantém o `go run` local funcionando sem `.env`.
+- **Token de DJ com expiração:** `exp` com `DJ_TOKEN_TTL` (padrão 24h), e a
+  validação passa a exigir `exp` e HS256. Tokens antigos, sem `exp`, deixam de
+  valer: o DJ cai para ouvinte e pode assumir a bancada de novo.
+- **Expiração deslizante:** `GET /stations/{id}` devolve um token novo para
+  quem já é DJ (com `Cache-Control: no-store`), e o frontend salva esse token.
+  Na prática só expira quem fica `DJ_TOKEN_TTL` sem abrir a sala.
+
+Pendente: o WebSocket recebe o token na query string (`?token=`), que aparece
+nos logs de acesso do Go e do Traefik. A expiração limita o estrago, mas o
+ideal é tirar o token da URL.
+
 ## Consequências
 
 - **Positivas:** um único lugar para segurança de borda, roteamento e métricas.
