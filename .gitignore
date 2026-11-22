@@ -31,3 +31,6 @@ frontend/dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Senha do dashboard do Traefik (gerada por scripts/traefik-dashboard-password.sh)
+infra/traefik/dashboard.htpasswd

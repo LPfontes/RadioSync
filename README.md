@@ -111,7 +111,7 @@ docker compose up -d --build
 |---|---|
 | Aplicação (via API Gateway) | http://localhost |
 | Aplicação (direto) | http://localhost:8080 |
-| Traefik dashboard | http://localhost:8081 |
+| Traefik dashboard (com senha; gere com `./scripts/traefik-dashboard-password.sh` e rode `docker compose restart gateway`) | http://localhost:8081/dashboard/ |
 | RabbitMQ management | http://localhost:15672 |
 | MinIO console | http://localhost:9001 |
 | Prometheus | http://localhost:9090 |
