@@ -1,0 +1,14 @@
+# Baseline do gitleaks (ADR-0005)
+#
+# Os 82 achados (2 impressões digitais: as regras jwt e generic-api-key na
+# mesma linha) são todos do arquivo backend/data/cookies.txt (cookies de
+# sessão do YouTube), commitado em 22/07/2026 e removido na Entrega 2. Como o
+# histórico do git é público, esses cookies são considerados vazados e a sessão
+# do Google que os gerou deve ser encerrada; reescrever o histórico não desfaz
+# o vazamento.
+#
+# Ficam listados aqui (só as impressões digitais, sem os segredos) para que o
+# scan do CI acuse qualquer segredo NOVO. Não adicione linhas a este arquivo
+# para "fazer o CI passar": remova o segredo e troque a credencial.
+2317f94c869e9e89b32cc7dd24a8d9475c94f789:backend/data/cookies.txt:generic-api-key:1
+2317f94c869e9e89b32cc7dd24a8d9475c94f789:backend/data/cookies.txt:jwt:1
