@@ -34,6 +34,17 @@ entrada para redirecionar rotas.
 5. Tirar segredos do repositório: `git rm --cached backend/.env backend/data/cookies.txt`,
    **trocar o `JWT_SECRET`** e regenerar os cookies do YouTube (os atuais devem
    ser considerados vazados).
+6. Proteger o dashboard e a API do Traefik (Entrega 3). Antes, o
+   `--api.insecure=true` deixava aberto na porta 8081 o mapa completo de rotas,
+   serviços e IPs internos. Agora o dashboard só abre por um router com basic
+   auth (bcrypt, `infra/traefik/dashboard.yml`). A senha fica em
+   `infra/traefik/dashboard.htpasswd`, fora do git, e é gerada por
+   `scripts/traefik-dashboard-password.sh`, que lê a senha sem eco. Sem esse
+   arquivo, o dashboard fica inacessível (seguro por padrão). A porta 8081 é
+   publicada só em `127.0.0.1`; no servidor, o acesso é por túnel SSH. O
+   `/metrics` continua sem senha nessa porta, para o Prometheus raspar pela rede
+   interna. Validado: sem senha, senha errada ou usuário errado dão `401`; a
+   senha correta dá `200`; o alvo `traefik` segue `up` no Prometheus.
 
 ## Alternativas consideradas
 
