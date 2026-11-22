@@ -1,0 +1,19 @@
+FROM golang:1.26-alpine AS backend
+WORKDIR /app
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o sync-service ./cmd/sync/
+
+FROM alpine:3.21
+RUN apk upgrade --no-cache && apk add --no-cache ca-certificates curl
+WORKDIR /app
+COPY --from=backend /app/sync-service .
+
+ENV PORT=8082
+EXPOSE 8082
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS http://localhost:8082/healthz || exit 1
+
+CMD ["./sync-service"]

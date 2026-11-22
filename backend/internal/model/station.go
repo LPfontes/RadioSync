@@ -640,11 +640,19 @@ func (s *Station) broadcastMixer() {
 	})
 }
 
-func (s *Station) calcPosition() float64 {
-	if s.State.IsPlaying {
-		elapsed := float64(time.Now().UnixMilli()-s.State.StartedAt) / 1000
-		return s.State.SeekOffset + elapsed
+func (p *PlaybackState) CalcPosition() float64 {
+	if p.IsPlaying {
+		elapsed := float64(time.Now().UnixMilli()-p.StartedAt) / 1000
+		return p.SeekOffset + elapsed
 	}
-	return s.State.SeekOffset
+	return p.SeekOffset
+}
+
+func (s *Station) CalcPosition() float64 {
+	return s.State.CalcPosition()
+}
+
+func (s *Station) calcPosition() float64 {
+	return s.CalcPosition()
 }
 

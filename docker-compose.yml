@@ -28,6 +28,31 @@ services:
     restart: unless-stopped
     init: true
 
+  # Sync Service: extraído do monolito (Strangler Fig, ADR-0001, ADR-0003).
+  # Gerencia WebSockets, sincronização e Hub com fan-out via Redis Pub/Sub.
+  # Escala horizontalmente com: docker compose up -d --scale sync=N
+  sync:
+    build:
+      context: .
+      dockerfile: Dockerfile.sync
+    image: ${RADIOSYNC_SYNC_IMAGE:-lpfonts/radiosync-sync}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      - PORT=8082
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      redis:
+        condition: service_healthy
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.sync.rule=PathPrefix(`/ws/`) || PathPrefix(`/ws`)
+      - traefik.http.routers.sync.entrypoints=web
+      - traefik.http.routers.sync.priority=100
+      - traefik.http.services.sync.loadbalancer.server.port=8082
+
   radiosync:
     build: .
     # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.

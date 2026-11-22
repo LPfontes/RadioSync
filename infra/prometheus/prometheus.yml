@@ -17,3 +17,9 @@ scrape_configs:
     metrics_path: /metrics
     static_configs:
       - targets: ["radiosync:8080"]
+
+  # Métricas do Sync Service (conexões ativas, mensagens por segundo, fan-out)
+  - job_name: sync
+    metrics_path: /metrics
+    static_configs:
+      - targets: ["sync:8082"]

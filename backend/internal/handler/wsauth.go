@@ -18,10 +18,12 @@ import (
 const (
 	wsProtocol           = "radiosync.v1"
 	wsAuthProtocolPrefix = "radiosync.auth."
+	WSProtocol           = wsProtocol
+	WSAuthProtocolPrefix = wsAuthProtocolPrefix
 )
 
-// wsOfferedProtocols lista os subprotocolos oferecidos pelo cliente.
-func wsOfferedProtocols(r *http.Request) []string {
+// WSOfferedProtocols lista os subprotocolos oferecidos pelo cliente.
+func WSOfferedProtocols(r *http.Request) []string {
 	var out []string
 	for _, h := range r.Header.Values("Sec-WebSocket-Protocol") {
 		for _, p := range strings.Split(h, ",") {
@@ -33,10 +35,14 @@ func wsOfferedProtocols(r *http.Request) []string {
 	return out
 }
 
-// wsTokenFromProtocols extrai o token de DJ de "radiosync.auth.<token>" e
+func wsOfferedProtocols(r *http.Request) []string {
+	return WSOfferedProtocols(r)
+}
+
+// WSTokenFromProtocols extrai o token de DJ de "radiosync.auth.<token>" e
 // informa se o cliente ofereceu "radiosync.v1".
-func wsTokenFromProtocols(r *http.Request) (token string, offersV1 bool) {
-	for _, p := range wsOfferedProtocols(r) {
+func WSTokenFromProtocols(r *http.Request) (token string, offersV1 bool) {
+	for _, p := range WSOfferedProtocols(r) {
 		switch {
 		case p == wsProtocol:
 			offersV1 = true
@@ -45,4 +51,8 @@ func wsTokenFromProtocols(r *http.Request) (token string, offersV1 bool) {
 		}
 	}
 	return token, offersV1
+}
+
+func wsTokenFromProtocols(r *http.Request) (token string, offersV1 bool) {
+	return WSTokenFromProtocols(r)
 }
