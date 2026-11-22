@@ -1,6 +1,8 @@
 # Runtime data and dynamic station state
 data/
 data/*
+# Histórico local de deploys (scripts/deploy.sh)
+deploy/
 
 # Audio uploads & music files
 musicas/

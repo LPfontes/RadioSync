@@ -30,9 +30,13 @@ services:
 
   radiosync:
     build: .
-    image: lpfonts/radiosync:latest
+    # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.
+    # Sem IMAGE_TAG cai em "latest" (desenvolvimento local).
+    image: ${RADIOSYNC_IMAGE:-lpfonts/radiosync}:${IMAGE_TAG:-latest}
     container_name: radiosync
     restart: unless-stopped
+    # Tempo para o salvamento final do estado no SIGTERM (ADR-0007)
+    stop_grace_period: 20s
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
@@ -41,6 +45,7 @@ services:
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - MUSIC_DIR=/app/musicas
       - FRONTEND_DIR=/app/frontend/dist
+      - APP_VERSION=${IMAGE_TAG:-dev}
       - DATA_DIR=/app/data
       - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
       # Sem ADMIN_PASSWORD as rotas /api/v1/admin respondem 503 (seguro por padrão)

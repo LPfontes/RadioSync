@@ -119,6 +119,26 @@ docker compose up -d --build
 
 ---
 
+### Deploy de uma nova versão
+
+O deploy usa imagem imutável (tag = SHA do commit), espera o `/healthz`
+responder com a versão nova e volta sozinho para a anterior se ela falhar
+([ADR-0007](docs/adr/0007-estrategia-de-deployment.md)):
+
+```bash
+git pull                      # no servidor, já com o commit que vai para o ar
+./scripts/deploy.sh           # constrói <imagem>:<sha> e troca a versão
+./scripts/deploy.sh <sha>     # volta (ou vai) para uma versão específica
+curl -s localhost:8080/healthz   # {"status":"ok","version":"<sha>",...}
+```
+
+O histórico fica em `deploy/history.log`. Medido localmente: cerca de 1,5 s de
+indisponibilidade por deploy; ouvintes continuam tocando e o WebSocket
+reconecta sozinho em ~3 s. Uma versão que quebra na subida volta para a
+anterior em ~2,5 s.
+
+---
+
 ### 4. Testes
 
 ```bash
