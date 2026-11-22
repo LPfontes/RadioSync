@@ -10,6 +10,7 @@ export const useStationStore = defineStore('station', () => {
   const suggestions = ref([])
   const mixer = ref([])
   const hasDJOnline = ref(false)
+  const clockOffset = ref(0) // Offset de relógio (servidor - cliente) em ms (ADR-0004)
   const state = ref({
     isPlaying: false,
     startedAt: 0,
@@ -53,11 +54,12 @@ export const useStationStore = defineStore('station', () => {
     suggestions.value = []
     mixer.value = []
     hasDJOnline.value = false
+    clockOffset.value = 0
     state.value = { isPlaying: false, startedAt: 0, seekOffset: 0, currentSong: '', duration: 0 }
   }
 
   return {
-    stationId, role, djToken, hasDJOnline, playlist, repository, suggestions, mixer, state,
+    stationId, role, djToken, hasDJOnline, clockOffset, playlist, repository, suggestions, mixer, state,
     setStation, setState, setPlaylist, setRepository, setSuggestions, setMixer, reset,
   }
 })

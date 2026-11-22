@@ -15,7 +15,9 @@ export function usePlayer(audioRef) {
     if (!audio || !store.state.currentSong) return
 
     if (store.state.isPlaying) {
-      const elapsed = (Date.now() - store.state.startedAt) / 1000
+      // Correção de offset de relógio estimada estilo NTP (ADR-0004)
+      const estimatedServerNow = Date.now() + (store.clockOffset || 0)
+      const elapsed = (estimatedServerNow - store.state.startedAt) / 1000
       const expectedPosition = elapsed + store.state.seekOffset
       const audioDuration = audio.duration || store.state.duration || Infinity
 
@@ -51,6 +53,7 @@ export function usePlayer(audioRef) {
   watch(() => store.state.isPlaying, syncPlayback)
   watch(() => store.state.seekOffset, syncPlayback)
   watch(() => store.state.startedAt, syncPlayback)
+  watch(() => store.clockOffset, syncPlayback)
 
   watch(() => store.state.currentSong, (url) => {
     const audio = audioRef.value

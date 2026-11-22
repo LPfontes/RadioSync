@@ -6,6 +6,7 @@ export function useWebSocket(onConnected) {
   const ws = ref(null)
   const connected = ref(false)
   let reconnectTimer = null
+  let syncT0 = 0
 
   function connect() {
     if (!store.stationId) return
@@ -65,18 +66,28 @@ export function useWebSocket(onConnected) {
       case 'DJ_STATUS':
         store.hasDJOnline = !!msg.hasDJOnline
         break
-      case 'SYNC':
+      case 'SYNC': {
+        const t1 = Date.now()
+        if (msg.serverTime && syncT0) {
+          // Estimativa de offset estilo NTP: offset = serverTime - (t0 + t1)/2 (ADR-0004)
+          const clientMid = (syncT0 + t1) / 2
+          store.clockOffset = msg.serverTime - clientMid
+        }
         store.state.seekOffset = msg.position
-        store.state.startedAt = Date.now()
+        store.state.startedAt = Date.now() + (store.clockOffset || 0)
         if (msg.mixer) {
           store.setMixer(msg.mixer)
         }
         break
+      }
     }
   }
 
   function send(data) {
     if (ws.value && ws.value.readyState === WebSocket.OPEN) {
+      if (data && data.type === 'SYNC_REQUEST') {
+        syncT0 = Date.now()
+      }
       ws.value.send(JSON.stringify(data))
     }
   }
