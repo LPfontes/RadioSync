@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
 
 	"github.com/go-chi/chi/v5"
@@ -65,15 +66,27 @@ func main() {
 	})
 
 	r.Get("/api/v1/library", handler.GetGlobalLibrary)
-	r.Get("/api/v1/debug", handler.DebugHandler)
+	// Diagnóstico expõe caminhos e IDs de todas as estações: só para admin.
+	r.With(handler.RequireAdmin).Get("/api/v1/debug", handler.DebugHandler)
+
+	if !auth.AdminEnabled() {
+		log.Printf("ADMIN_PASSWORD não definido: rotas /api/v1/admin desabilitadas (503)")
+	}
 
 	r.Route("/api/v1/admin", func(r chi.Router) {
-		r.Get("/stations", handler.GetAdminStations)
-		r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
-		r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
-		r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
-		r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
-		r.Post("/cookies", handler.SaveCookiesAdmin)
+		r.Post("/login", handler.AdminLogin)
+
+		r.Group(func(r chi.Router) {
+			r.Use(handler.RequireAdmin)
+			r.Get("/verify", handler.AdminVerify)
+			r.Get("/stations", handler.GetAdminStations)
+			r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
+			r.Post("/stations/{stationId}/dj-token", handler.IssueDJTokenAdmin)
+			r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
+			r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
+			r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
+			r.Post("/cookies", handler.SaveCookiesAdmin)
+		})
 	})
 
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)
