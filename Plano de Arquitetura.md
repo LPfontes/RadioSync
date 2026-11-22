@@ -116,7 +116,7 @@ O servidor registra o MIME type `.opus` como `audio/ogg` antes de inicializar o 
 
 ### **6.4 Conexão e Eventos WebSocket (`/ws/stations/{stationId}`)**
 
-Aceita `?token=<djToken>` para autenticar o DJ (caso não haja outro DJ já conectado).
+O DJ se autentica pelo subprotocolo `radiosync.auth.<djToken>` (header `Sec-WebSocket-Protocol`), nunca pela URL, e só vira DJ se não houver outro DJ conectado (ADR-0005).
 
 - **Comandos de Ouvinte/Geral:** `SYNC_REQUEST`, `SUGGEST_TRACK`.
 - **Comandos Exclusivos do DJ:** `PLAY`, `PAUSE`, `SEEK`, `NEXT_TRACK`, `ADD_TO_PLAYLIST`, `PLAY_PLAYLIST_TRACK`, `REMOVE_FROM_PLAYLIST`, `REORDER_PLAYLIST`, `APPROVE_SUGGESTION`, `REJECT_SUGGESTION`, `CLEAR_SUGGESTIONS`, `MIXER_UPDATE`, `MIXER_SET_CHANNEL`, `MIXER_REMOVE_CHANNEL`, `MIXER_CLEAR`.

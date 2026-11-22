@@ -182,7 +182,11 @@ As principais variáveis configuráveis no servidor Go:
 
 ### **WebSockets (`/ws`)**
 
-- `WS /ws/stations/{stationId}?role=dj&token=<djToken>` — Conexão WebSocket para a estação.
+- `WS /ws/stations/{stationId}` — Conexão WebSocket para a estação. O DJ se autentica pelo subprotocolo, nunca pela URL (que vai para os logs de acesso):
+  ```js
+  new WebSocket(url, ['radiosync.v1', `radiosync.auth.${djToken}`])
+  ```
+  O servidor responde com o subprotocolo `radiosync.v1`. Sem token válido, a conexão entra como ouvinte.
 
 #### **Mensagens Enviadas pelo DJ (`IncomingMessage`):**
 - `{ "type": "PLAY" }` — Inicia a reprodução.
