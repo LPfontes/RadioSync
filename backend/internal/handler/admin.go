@@ -70,21 +70,13 @@ func GetAdminStations(w http.ResponseWriter, r *http.Request) {
 		totalMissing += missingCount
 	}
 
-	persistFile := persistPath()
-	fileInfo, _ := os.Stat(persistFile)
-	fileSize := int64(0)
-	if fileInfo != nil {
-		fileSize = fileInfo.Size()
-	}
-
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"stations":          list,
 		"totalStations":     len(list),
 		"totalTracks":       totalTracks,
 		"totalMissingFiles": totalMissing,
-		"persistFilePath":   persistFile,
-		"persistFileSize":   fileSize,
+		"storageBackend":    "postgres+minio",
 	})
 }
 
