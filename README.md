@@ -111,11 +111,22 @@ docker compose up -d --build
 |---|---|
 | Aplicação (via API Gateway) | http://localhost |
 | Aplicação (direto) | http://localhost:8080 |
+| Sync Service (WebSockets via Gateway) | ws://localhost/ws/stations/{id} |
+| Sync Service réplicas (escala) | `docker compose up -d --scale sync=3` |
 | Traefik dashboard (com senha; gere com `./scripts/traefik-dashboard-password.sh` e rode `docker compose restart gateway`) | http://localhost:8081/dashboard/ |
 | RabbitMQ management | http://localhost:15672 |
 | MinIO console | http://localhost:9001 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
+
+### Escalabilidade do Sync Service
+
+O **Sync Service** (`backend/cmd/sync`) foi extraído seguindo o padrão **Strangler Fig** ([ADR-0003](docs/adr/0003-migracao-strangler-fig.md)). O Traefik roteia todo o tráfego de `/ws/*` com load balancing automático entre réplicas. Os eventos de reprodução (`PLAY`, `PAUSE`, `SEEK`, `STATE_UPDATE`, `MIXER_*`) são sincronizados em tempo real via **Redis Pub/Sub** no canal `station:{id}:events` ([ADR-0001](docs/adr/0001-redis-pubsub-fanout-websocket.md)), enquanto o estado do player (`PlaybackState`) reside no Redis (`station:{id}:state`), permitindo que novas réplicas atendam conexões instantaneamente. O lock global de DJ (`station:{id}:dj`) com TTL e heartbeat garante a regra de 1 DJ por estação entre réplicas, e o algoritmo estilo NTP compensa desvios de relógio dos clientes ([ADR-0004](docs/adr/0004-sincronizacao-client-side-timestamp.md)).
+
+Para escalar horizontalmente:
+```bash
+docker compose up -d --scale sync=3
+```
 
 ---
 
@@ -288,8 +299,7 @@ radio/
 | Ferramenta | Onde atuou | Como foi orientada | Avaliação honesta |
 |---|---|---|---|
 | Claude (Anthropic) | Entrega 2: rascunho dos ADRs 0001–0006, diagramas C4 em Mermaid, plano de testes, `docker-compose.yml` com a infraestrutura, workflow de CI e testes unitários Go | Recebeu o documento do projeto final e o link do repositório; leu o código atual e gerou os artefatos a partir dele | Os testes encontraram um bug real em `ExtractYouTubeURL` (corrigido). A equipe revisou os ADRs e ajustou: _descrever aqui o que foi alterado ou descartado_ |
-| _ferramenta usada no desenvolvimento inicial (ex.: Gemini, Copilot)_ | _ex.: geração do Plano de Arquitetura e de partes do backend/frontend_ | _preencher_ | _preencher_ |
-| _outras_ | | | |
+| Gemini (Google DeepMind), via Antigravity — Nathan (Membro 1) | Entrega 3, frente do Sync Service (WebSocket e sincronização distribuída): extração do binário `backend/cmd/sync` e serviço `sync` escalável no compose (`--scale sync=N`), fan-out entre réplicas via Redis Pub/Sub (`station:{id}:events`, ADR-0001), estado quente do `PlaybackState` no Redis (`station:{id}:state`), lock global de 1 DJ por estação com TTL e heartbeat (`station:{id}:dj`), algoritmo client-side estilo NTP para estimativa e compensação de offset de relógio (ADR-0004) no backend (`ws.EstimateClockOffset`) e frontend (`usePlayer.js` / `useWebSocket.js`), reconexão transparente, retenção de segurança de subprotocolo e CORS/Origin, pacote de observabilidade com Prometheus (`internal/metrics`), testes unitários de pubsub e offset, e testes automatizados de integração INT-01 (< 200 ms), RES-01 (< 5 s) e RES-04 (reinício do Redis) | Guiada com os requisitos da Entrega 3, especificações dos ADRs 0001, 0003 e 0004 e contratos de dependência com as demais frentes (Membro 3 no gateway, Membro 5 nas métricas e Membro 4 no storage). Foi solicitado implementar a extração completa do serviço com testes automatizados executáveis com race detector | **Funcionou:** projetou e implementou com precisão a arquitetura de fan-out com supressão de auto-mensagens (`senderId`), testes automatizados INT-01 (latência medida de 1,1 ms) e RES-01 (reconexão medida em 1,7 ms), e o algoritmo NTP eliminou completamente distorções de playback causadas por relógios locais desajustados. **Precisou ser corrigido:** o design inicial colocou a engine dentro de `internal/ws`, o que gerou ciclo de importação com `internal/model` e `internal/handler` (resolvido extraindo a camada de orquestração para `internal/syncservice`), e a primeira versão do mock de broker para testes unitários precisou de ajuste para rastrear o ID de cada assinante |
 | Claude (Anthropic), via Claude Code — Gabriel Ribeiro (Membro 3) | Entrega 3, frente de Segurança, DevSecOps e Deployment (#17): auth do admin com JWT e ForwardAuth, CORS e `Origin` do WebSocket, validação do `JWT_SECRET` e expiração do token de DJ, token fora da URL do WebSocket, rate limit por rota, senha do dashboard do Traefik, correção da injeção de argumentos no yt-dlp, workflow `security.yml`, ADR-0007, ADR-0008, `scripts/deploy.sh` e `scripts/traefik-dashboard-password.sh`, com testes Go de cada item. Também ajudou a dividir a Entrega 3 nas issues #15 a #19 | Em sessões no próprio repositório, com o documento do projeto e a issue como contexto; pedi um item por vez, cada um em PR para `dev`. A IA subia a stack local com Docker Compose e testava cada mudança (curl, navegador, clientes WebSocket) antes de abrir o PR | **Funcionou:** os scanners que ela configurou acharam uma falha crítica real (a URL do YouTube virava opção do yt-dlp) e 21 vulnerabilidades da biblioteca padrão do Go. **Precisou ser corrigido:** várias suposições dela estavam erradas e só caíram nos testes. Ela achou que o restart perdia até 30 s de estado (não perdia); mediu 0,4 s de deploy quando o gateway ficava ~10 s sem a versão nova; afirmou que o Traefik relia a senha do dashboard sozinho (não relê); o script de senha deixava a senha aparecer na tela; e o govulncheck passou na máquina local e falhou no CI. **Descartado:** blue-green e canary por enquanto, por causa do estado em memória (ADR-0007). Os PRs desta frente foram mergeados sem a aprovação de outro membro, por decisão minha, para cumprir o prazo |
 
 ---

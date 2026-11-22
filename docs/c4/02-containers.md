@@ -89,4 +89,44 @@ C4Container
 | MinIO | S3 compatível | Arquivos de áudio | 0006 |
 | Prometheus / Grafana | — | Métricas (latência p95, filas, conexões) | — |
 
+## 2.3 Situação Implementada — Entrega 3 (as-built / Strangler Fig)
+
+Na Entrega 3, o **Sync Service** foi extraído com sucesso do monolito segundo o padrão **Strangler Fig** (ADR-0003). O Traefik intercepta todo tráfego de `/ws/*` com prioridade 100 e faz balanceamento de carga entre as réplicas ativas do Sync Service (`docker compose up -d --scale sync=N`).
+
+```mermaid
+C4Container
+    title RadioSync — Containers Implementados (Entrega 3)
+
+    Person(dj, "DJ")
+    Person(ouvinte, "Ouvinte")
+    System_Ext(youtube, "YouTube")
+
+    System_Boundary(rs, "RadioSync") {
+        Container(spa, "Frontend SPA", "Vue 3, Pinia", "Player, painel do DJ, tela de escuta e cálculo de offset NTP.")
+        Container(gw, "API Gateway / LB", "Traefik v3.6", "Roteia /ws/* para o Sync Service e /* para o monolito com rate limit.")
+        Container(sync, "Sync Service (N réplicas)", "Go (cmd/sync), WebSocket", "Hub por estação, fan-out Redis Pub/Sub, estado quente, heartbeat e lock de DJ.")
+        Container(mono, "Servidor RadioSync (Monolito)", "Go (cmd/server)", "Rotas REST (/api/v1/*), upload, conversão FFmpeg e admin.")
+        ContainerDb(redis, "Redis", "Redis 7 (AOF)", "Canal station:{id}:events, estado station:{id}:state e lock station:{id}:dj.")
+        ContainerQueue(mq, "RabbitMQ", "RabbitMQ 3.13", "Infraestrutura de mensageria para transcodificação assíncrona.")
+        ContainerDb(pg, "PostgreSQL", "Postgres 16", "Banco de dados relacional durável.")
+        ContainerDb(minio, "MinIO", "S3 Storage", "Armazenamento de objetos de mídia.")
+        Container(obs, "Prometheus + Grafana", "Observabilidade", "Scrape de /metrics do gateway e das réplicas do Sync Service.")
+    }
+
+    Rel(dj, spa, "Usa", "HTTPS")
+    Rel(ouvinte, spa, "Usa", "HTTPS")
+    Rel(spa, gw, "Requisições HTTP e conexões WS", "HTTPS/WSS")
+
+    Rel(gw, sync, "Roteia /ws/stations/* com load balancing", "WebSocket")
+    Rel(gw, mono, "Roteia /api/v1/* e estáticos", "HTTP")
+
+    Rel(sync, redis, "Pub/Sub (events), estado quente (state) e lock DJ", "TCP/RESP")
+    Rel(mono, redis, "Compartilha estado e canais", "TCP/RESP")
+
+    Rel(obs, sync, "Raspa /metrics (conexões ativas, latência fan-out)", "HTTP")
+    Rel(obs, gw, "Raspa métricas de requisições", "HTTP")
+
+    UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
+```
+
 > Os diagramas usam a sintaxe C4 do Mermaid, renderizada pelo GitHub. Se precisarem de imagem para os slides, abram o arquivo no [Mermaid Live Editor](https://mermaid.live) e exportem em PNG/SVG.

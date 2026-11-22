@@ -1,8 +1,8 @@
 # ADR-0001: Redis Pub/Sub para fan-out de eventos WebSocket entre réplicas
 
-- **Status:** Aceito (implementação na Entrega 3)
-- **Data:** 2026-11-03
-- **Responsável:** Membro 1 (Sync Service)
+- **Status:** Implementado (Entrega 3)
+- **Data:** 2026-11-03 (atualizado em 2026-11-22)
+- **Responsável:** Membro 1 — Nathan (Sync Service)
 - **Áreas:** Escalabilidade, Confiabilidade
 
 ## Contexto
@@ -16,7 +16,8 @@ Também há estado da estação (`PlaybackState`, playlist) guardado só em mem�
 ## Decisão
 
 1. Cada réplica do Sync Service publica os eventos de uma estação no canal Redis `station:{id}:events` e assina esse mesmo canal. Ao receber uma mensagem do Redis, a réplica a repassa apenas para os clientes WebSocket **locais** daquela estação (Messaging Fan-out).
-2. O `PlaybackState` e a playlist passam a ser guardados em Redis (`station:{id}:state`, `station:{id}:playlist`), tornando as réplicas *stateless* — o estado deixa de morar no processo.
+2. O `PlaybackState` passa a ser guardado em Redis (`station:{id}:state`), tornando as réplicas *stateless* — uma réplica nova lê o estado quente ao aceitar conexões.
+3. Lock global de DJ no Redis com TTL e heartbeat (`station:{id}:dj`), garantindo a regra de 1 DJ por estação globalmente entre réplicas.
 
 ## Alternativas consideradas
 
@@ -29,6 +30,21 @@ Também há estado da estação (`PlaybackState`, playlist) guardado só em mem�
 
 ## Consequências
 
-- **Positivas:** o Sync Service pode ter N réplicas; uma réplica pode cair sem derrubar a estação (os clientes reconectam em outra).
-- **Negativas / trade-offs:** Pub/Sub é *fire-and-forget*. Mitigação: o cliente já envia `SYNC_REQUEST` ao reconectar e o estado completo é lido do Redis, então um evento perdido é corrigido no próximo `STATE_UPDATE`. Redis vira ponto único de falha (mitigável com Redis Sentinel, fora do escopo).
-- **Como vamos validar:** teste de integração com 2 réplicas (DJ na réplica A, ouvinte na B); teste de carga com k6 medindo p95 da latência de propagação do `PLAY` com 500 ouvintes; teste de resiliência derrubando uma réplica.
+- **Positivas:** o Sync Service pode ter N réplicas; uma réplica pode cair sem derrubar a estação (os clientes reconectam em outra com `docker compose up -d --scale sync=N`).
+- **Negativas / trade-offs:** Pub/Sub é *fire-and-forget*. Mitigação: o cliente recebe o `PlaybackState` completo no handshake e envia `SYNC_REQUEST` ao reconectar, então um evento perdido é corrigido no próximo `STATE_UPDATE`. Redis vira ponto único de falha no fan-out (mitigável com Redis Sentinel/Cluster em produção).
+
+## Implementação (Entrega 3)
+
+A extração do serviço foi concluída com os seguintes componentes:
+1. **Novo binário e container:** `backend/cmd/sync` compilado em container independente Alpine (`Dockerfile.sync`), executando o pacote `internal/syncservice`.
+2. **Gateway Strangler Fig:** no `docker-compose.yml`, o Traefik roteia `PathPrefix('/ws/')` com prioridade 100 para o serviço `sync`, com load balancing automático entre réplicas.
+3. **Métricas Prometheus:** pacote `internal/metrics` exposto em `/metrics` no Sync Service, coletando conexões ativas (`radiosync_sync_active_connections`), total de mensagens (`radiosync_sync_messages_total`) e histograma de latência de fan-out (`radiosync_sync_fanout_duration_seconds`).
+4. **Resiliência a reinício do Redis (RES-04):** o `RedisSyncStorage` possui reconexão com backoff exponencial na assinatura do canal `station:{id}:events`.
+
+### Resultados Medidos nos Testes Automatizados
+
+| Teste | Cenário | Meta | Resultado Medido | Situação |
+|---|---|---|---|---|
+| **INT-01** | PLAY na réplica A propagado para ouvinte na réplica B | < 200 ms | **1,10 ms** | Aprovado |
+| **RES-01** | Queda da réplica e reconexão do cliente com estado quente | < 5 s | **1,71 ms** | Aprovado |
+| **RES-04** | Reinício do broker e restabelecimento do fan-out | Eventos voltam a fluir | **Confirmado** (re-subscrição com sucesso) | Aprovado |
