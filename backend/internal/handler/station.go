@@ -94,11 +94,12 @@ func GetStation(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	hasDJ := station.Hub != nil && station.Hub.HasDJConnected()
 	
-	// Se o cliente enviar o token do DJ (via Authorization Bearer ou query param token)
+	// Token do DJ só via Authorization: Bearer. Query string (?token=) não é
+	// aceita porque a URL vai para os logs de acesso (ADR-0005).
 	authHeader := r.Header.Get("Authorization")
 	reqToken := strings.TrimPrefix(authHeader, "Bearer ")
-	if reqToken == "" || reqToken == authHeader {
-		reqToken = r.URL.Query().Get("token")
+	if reqToken == authHeader {
+		reqToken = ""
 	}
 
 	role := "listener"

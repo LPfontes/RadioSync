@@ -32,8 +32,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// O token de DJ vem no Sec-WebSocket-Protocol, nunca na URL (ver wsauth.go).
+	// Um ?token= de clientes antigos é ignorado: a conexão entra como ouvinte.
 	role := "listener"
-	token := r.URL.Query().Get("token")
+	token, offersV1 := wsTokenFromProtocols(r)
+	if r.URL.Query().Has("token") {
+		log.Printf("ws %s: token na query string ignorado (cliente desatualizado)", stationID)
+	}
 	if token != "" && auth.ValidateDJToken(token, stationID) {
 		if !station.Hub.HasDJConnected() {
 			role = "dj"
@@ -42,7 +47,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// Responde só com "radiosync.v1": o subprotocolo com o token não é ecoado.
+	var respHeader http.Header
+	if offersV1 {
+		respHeader = http.Header{"Sec-Websocket-Protocol": {wsProtocol}}
+	}
+
+	conn, err := upgrader.Upgrade(w, r, respHeader)
 	if err != nil {
 		log.Printf("erro upgrade ws: %v", err)
 		return
