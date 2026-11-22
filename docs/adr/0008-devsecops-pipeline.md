@@ -17,7 +17,7 @@ segurança. Rodar as ferramentas uma vez à mão mostrou o tamanho do problema:
 | Trivy (imagem) | 3 *HIGH* em pacotes do sistema (musl, zlib), todos com correção |
 | Trivy (config) | Container rodando como `root` |
 | gitleaks | 82 segredos no histórico: cookies de sessão do YouTube em `backend/data/cookies.txt` (commit de 22/07) |
-| `govulncheck` (SCA Go) | Nada |
+| `govulncheck` (SCA Go) | **21 vulnerabilidades da biblioteca padrão alcançáveis pelo código** (ex.: `crypto/x509` via `ListenAndServe`), porque o `go.mod` fixava `go 1.26.1` e o CI usava exatamente essa versão. Localmente não apareceu porque a máquina tinha o Go 1.27; só o primeiro run do pipeline mostrou. |
 
 Sem um pipeline, cada um desses problemas volta no próximo PR sem ninguém ver.
 
@@ -44,6 +44,7 @@ commit (uma tag pode ser movida; um SHA não), ferramentas fixadas por versão e
 o binário do gitleaks verificado por checksum.
 
 Correções feitas junto, para o pipeline nascer verde:
+- `toolchain go1.26.11` no `go.mod` (último patch da 1.26; a versão da linguagem continua 1.26), o que zera o govulncheck;
 - `npm audit fix` (só o `package-lock.json` mudou; versões compatíveis);
 - `apk upgrade` na imagem final do Dockerfile;
 - `ReadHeaderTimeout` (10 s), `IdleTimeout` (120 s) e `MaxHeaderBytes` no servidor HTTP;
