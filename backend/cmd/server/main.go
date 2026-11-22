@@ -8,11 +8,11 @@ import (
 	"path/filepath"
 
 	"radio-backend/internal/handler"
+	"radio-backend/internal/security"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	"github.com/rs/cors"
 )
 
 func main() {
@@ -27,13 +27,12 @@ func main() {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
-	})
-	r.Use(corsHandler.Handler)
+	// CORS e Origin do WebSocket restritos (ADR-0005): mesma origem por
+	// padrão; outras origens só via ALLOWED_ORIGINS.
+	allowedOrigins := security.AllowedOrigins()
+	log.Printf("CORS/WebSocket: mesma origem + ALLOWED_ORIGINS=%v", allowedOrigins)
+	r.Use(security.CORS(allowedOrigins))
+	handler.SetWebSocketOriginCheck(security.CheckWebSocketOrigin(allowedOrigins))
 
 	musicDir := os.Getenv("MUSIC_DIR")
 	if musicDir == "" {
