@@ -8,15 +8,15 @@ import (
 	"path/filepath"
 	"strings"
 
-	"radio-backend/internal/auth"
 	"radio-backend/internal/model"
 
 	"github.com/go-chi/chi/v5"
 )
 
+// AdminStationSummary não inclui o djToken de propósito (ADR-0005): o admin
+// pede um token por estação em POST /admin/stations/{id}/dj-token.
 type AdminStationSummary struct {
 	ID                string               `json:"id"`
-	DJToken           string               `json:"djToken"`
 	State             *model.PlaybackState `json:"state"`
 	Repository        []model.Track        `json:"repository"`
 	Playlist          []model.Track        `json:"playlist"`
@@ -40,18 +40,7 @@ func GetAdminStations(w http.ResponseWriter, r *http.Request) {
 		repo := append([]model.Track{}, s.Repository...)
 		playlist := append([]model.Track{}, s.Playlist...)
 		state := s.State
-		djToken := s.DJ
 		s.RUnlock()
-
-		if !auth.ValidateDJToken(djToken, id) {
-			if validToken, err := auth.GenerateDJToken(id); err == nil {
-				djToken = validToken
-				s.Lock()
-				s.DJ = validToken
-				s.Unlock()
-				go SaveStations()
-			}
-		}
 
 		missingCount := 0
 		for _, t := range repo {
@@ -67,7 +56,6 @@ func GetAdminStations(w http.ResponseWriter, r *http.Request) {
 
 		summary := AdminStationSummary{
 			ID:                id,
-			DJToken:           djToken,
 			State:             state,
 			Repository:        repo,
 			Playlist:          playlist,
@@ -224,10 +212,13 @@ func SaveCookiesAdmin(w http.ResponseWriter, r *http.Request) {
 	_ = os.MkdirAll(dir, 0755)
 	cookiesPath := filepath.Join(dir, "cookies.txt")
 
-	if err := os.WriteFile(cookiesPath, []byte(req.Content), 0644); err != nil {
+	if err := os.WriteFile(cookiesPath, []byte(req.Content), 0600); err != nil {
 		http.Error(w, fmt.Sprintf("erro ao salvar cookies.txt: %v", err), http.StatusInternalServerError)
 		return
 	}
+	// cookies.txt guarda a sessão do YouTube: só o próprio processo lê (0600),
+	// inclusive se o arquivo já existia com outra permissão.
+	_ = os.Chmod(cookiesPath, 0600)
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -310,5 +301,3 @@ func RenameTrackAdmin(w http.ResponseWriter, r *http.Request) {
 		"updated": updatedCount,
 	})
 }
-
-

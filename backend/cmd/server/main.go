@@ -6,17 +6,26 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"time"
 
+	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
+	"radio-backend/internal/security"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
 	"github.com/joho/godotenv"
-	"github.com/rs/cors"
 )
 
 func main() {
 	godotenv.Load()
+
+	// Sem segredo forte não há como confiar nos tokens de DJ (ADR-0005).
+	if warning, err := auth.CheckSecret(); err != nil {
+		log.Fatal(err)
+	} else if warning != "" {
+		log.Printf("AVISO: %s", warning)
+	}
 
 	err := mime.AddExtensionType(".opus", "audio/ogg")
 	if err != nil {
@@ -27,13 +36,12 @@ func main() {
 	r.Use(chimw.Logger)
 	r.Use(chimw.Recoverer)
 
-	corsHandler := cors.New(cors.Options{
-		AllowedOrigins:   []string{"*"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"*"},
-		AllowCredentials: true,
-	})
-	r.Use(corsHandler.Handler)
+	// CORS e Origin do WebSocket restritos (ADR-0005): mesma origem por
+	// padrão; outras origens só via ALLOWED_ORIGINS.
+	allowedOrigins := security.AllowedOrigins()
+	log.Printf("CORS/WebSocket: mesma origem + ALLOWED_ORIGINS=%v", allowedOrigins)
+	r.Use(security.CORS(allowedOrigins))
+	handler.SetWebSocketOriginCheck(security.CheckWebSocketOrigin(allowedOrigins))
 
 	musicDir := os.Getenv("MUSIC_DIR")
 	if musicDir == "" {
@@ -46,9 +54,12 @@ func main() {
 	handler.LoadTracksCatalog()
 	handler.LoadStations()
 	go handler.PeriodicSave()
+	handler.SaveOnShutdown()
 
 	fileServer := http.FileServer(http.Dir(musicDir))
 	r.Handle("/musicas/*", http.StripPrefix("/musicas/", fileServer))
+	// Saúde e versão em execução, para o HEALTHCHECK e o deploy (ADR-0007)
+	r.Get("/healthz", handler.Healthz)
 
 	r.Route("/api/v1/stations", func(r chi.Router) {
 		r.Post("/", handler.CreateStation)
@@ -65,15 +76,27 @@ func main() {
 	})
 
 	r.Get("/api/v1/library", handler.GetGlobalLibrary)
-	r.Get("/api/v1/debug", handler.DebugHandler)
+	// Diagnóstico expõe caminhos e IDs de todas as estações: só para admin.
+	r.With(handler.RequireAdmin).Get("/api/v1/debug", handler.DebugHandler)
+
+	if !auth.AdminEnabled() {
+		log.Printf("ADMIN_PASSWORD não definido: rotas /api/v1/admin desabilitadas (503)")
+	}
 
 	r.Route("/api/v1/admin", func(r chi.Router) {
-		r.Get("/stations", handler.GetAdminStations)
-		r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
-		r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
-		r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
-		r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
-		r.Post("/cookies", handler.SaveCookiesAdmin)
+		r.Post("/login", handler.AdminLogin)
+
+		r.Group(func(r chi.Router) {
+			r.Use(handler.RequireAdmin)
+			r.Get("/verify", handler.AdminVerify)
+			r.Get("/stations", handler.GetAdminStations)
+			r.Delete("/stations/{stationId}", handler.DeleteStationAdmin)
+			r.Post("/stations/{stationId}/dj-token", handler.IssueDJTokenAdmin)
+			r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
+			r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
+			r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
+			r.Post("/cookies", handler.SaveCookiesAdmin)
+		})
 	})
 
 	r.Get("/ws/stations/{stationId}", handler.HandleWebSocket)
@@ -99,6 +122,18 @@ func main() {
 		port = "8080"
 	}
 
+	// Timeouts contra Slowloris (gosec G114): quem abre conexão e manda o
+	// cabeçalho devagar segura uma goroutine e um socket para sempre. Só o
+	// cabeçalho e a ociosidade têm limite; ReadTimeout/WriteTimeout cortariam
+	// uploads grandes e as conexões WebSocket, que são longas por natureza.
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           r,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+		MaxHeaderBytes:    1 << 20,
+	}
+
 	log.Printf("Servidor rodando na porta %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, r))
+	log.Fatal(srv.ListenAndServe())
 }

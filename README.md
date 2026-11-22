@@ -111,11 +111,31 @@ docker compose up -d --build
 |---|---|
 | Aplicação (via API Gateway) | http://localhost |
 | Aplicação (direto) | http://localhost:8080 |
-| Traefik dashboard | http://localhost:8081 |
+| Traefik dashboard (com senha; gere com `./scripts/traefik-dashboard-password.sh` e rode `docker compose restart gateway`) | http://localhost:8081/dashboard/ |
 | RabbitMQ management | http://localhost:15672 |
 | MinIO console | http://localhost:9001 |
 | Prometheus | http://localhost:9090 |
 | Grafana | http://localhost:3000 |
+
+---
+
+### Deploy de uma nova versão
+
+O deploy usa imagem imutável (tag = SHA do commit), espera o `/healthz`
+responder com a versão nova e volta sozinho para a anterior se ela falhar
+([ADR-0007](docs/adr/0007-estrategia-de-deployment.md)):
+
+```bash
+git pull                      # no servidor, já com o commit que vai para o ar
+./scripts/deploy.sh           # constrói <imagem>:<sha> e troca a versão
+./scripts/deploy.sh <sha>     # volta (ou vai) para uma versão específica
+curl -s localhost:8080/healthz   # {"status":"ok","version":"<sha>",...}
+```
+
+O histórico fica em `deploy/history.log`. Medido localmente: cerca de 1,5 s de
+indisponibilidade por deploy; ouvintes continuam tocando e o WebSocket
+reconecta sozinho em ~3 s. Uma versão que quebra na subida volta para a
+anterior em ~2,5 s.
 
 ---
 
@@ -129,6 +149,13 @@ go test -race ./...
 O CI (GitHub Actions, `.github/workflows/ci.yml`) roda `go vet`, os testes com
 detector de race condition, o build do frontend, a validação do
 `docker-compose.yml` e o build da imagem Docker em todo push e pull request.
+
+O workflow de segurança (`.github/workflows/security.yml`, [ADR-0008](docs/adr/0008-devsecops-pipeline.md))
+roda em todo pull request, em push para `dev`/`main` e toda segunda-feira:
+`govulncheck` e `npm audit` (dependências), gitleaks (segredos no histórico),
+Trivy (imagem e configuração), gosec (análise estática) e SBOM SPDX da imagem.
+Os resultados aparecem em **Security → Code scanning**, e o SBOM fica nos
+artefatos da execução.
 
 ---
 
@@ -153,10 +180,14 @@ As principais variáveis configuráveis no servidor Go:
 | Variável | Valor Padrão | Descrição |
 | :--- | :--- | :--- |
 | `PORT` | `8080` | Porta onde o servidor HTTP/WS irá escutar. |
+| `ALLOWED_ORIGINS` | _(vazio)_ | Origens extras aceitas no CORS e no WebSocket (separadas por vírgula). Vazio = só a mesma origem. |
 | `MUSIC_DIR` | `../musicas` (ou `/app/musicas`) | Diretório onde os arquivos `.opus` convertidos são armazenados. |
+| `DJ_TOKEN_TTL` | `24h` | Validade do token de DJ. É renovada sempre que o DJ abre a sala. |
 | `DATA_DIR` | `./data` (ou `/app/data`) | Diretório onde o arquivo de estado `stations.json` é armazenado. |
 | `FRONTEND_DIR` | `../frontend/dist` (ou `/app/frontend/dist`) | Diretório contendo os arquivos estáticos compilados da SPA Vue. |
-| `JWT_SECRET` | `dev-secret-change-in-production` | Chave secreta usada para assinar e validar tokens JWT do DJ. |
+| `JWT_SECRET` | _(aleatório por processo)_ | Chave dos tokens JWT, com no mínimo 32 caracteres (`openssl rand -hex 32`). Valores de exemplo ou curtos impedem a subida; sem a variável o servidor usa um segredo temporário e os tokens caem a cada reinício. |
+| `ADMIN_PASSWORD` | _(vazio)_ | Senha do painel `/admin`. Vazia = rotas de admin desabilitadas (`503`). |
+| `ADMIN_TOKEN_TTL` | `8h` | Validade do JWT de admin emitido no login. |
 
 ---
 
@@ -171,18 +202,30 @@ As principais variáveis configuráveis no servidor Go:
 - `GET /api/v1/stations/{stationId}/repository` — Lista as faixas do repositório da estação (Requer header `Authorization: Bearer <djToken>`).
 - `GET /api/v1/stations/{stationId}/musicas` — Lista os arquivos `.opus` existentes no servidor.
 - `GET /api/v1/library` — Lista todas as músicas da biblioteca global salvas no servidor.
-- `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência.
+- `GET /api/v1/debug` — Endpoint de diagnóstico de status do servidor e persistência (requer token de admin).
 
 ### **Administração (`/api/v1/admin`)**
 
-- `GET /api/v1/admin/stations` — Retorna resumo completo de todas as estações e métricas do `stations.json`.
+Todas as rotas abaixo, exceto o login, exigem `Authorization: Bearer <adminToken>`
+(sem token → `401`; sem `ADMIN_PASSWORD` configurado → `503`). No gateway, o
+Traefik valida o token via ForwardAuth antes de repassar a requisição, e o login
+tem limite de 5 tentativas por minuto por IP.
+
+- `POST /api/v1/admin/login` — Recebe `{ "password": "..." }` e retorna `{ token, expiresAt }`.
+- `GET /api/v1/admin/verify` — `204` se o token de admin for válido (usado pelo ForwardAuth).
+- `GET /api/v1/admin/stations` — Retorna resumo de todas as estações e métricas do `stations.json` (sem `djToken`).
+- `POST /api/v1/admin/stations/{stationId}/dj-token` — Emite, sob demanda, um token de DJ para a estação.
 - `DELETE /api/v1/admin/stations/{stationId}` — Exclui uma estação permanentemente e salva o `stations.json`.
 - `POST /api/v1/admin/purge-orphans` — Purga todos os metadados de faixas inexistentes do `stations.json`.
 - `DELETE /api/v1/admin/stations/{stationId}/tracks/{trackId}` — Remove uma faixa do repositório da estação.
 
 ### **WebSockets (`/ws`)**
 
-- `WS /ws/stations/{stationId}?role=dj&token=<djToken>` — Conexão WebSocket para a estação.
+- `WS /ws/stations/{stationId}` — Conexão WebSocket para a estação. O DJ se autentica pelo subprotocolo, nunca pela URL (que vai para os logs de acesso):
+  ```js
+  new WebSocket(url, ['radiosync.v1', `radiosync.auth.${djToken}`])
+  ```
+  O servidor responde com o subprotocolo `radiosync.v1`. Sem token válido, a conexão entra como ouvinte.
 
 #### **Mensagens Enviadas pelo DJ (`IncomingMessage`):**
 - `{ "type": "PLAY" }` — Inicia a reprodução.

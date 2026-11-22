@@ -11,13 +11,16 @@ export function useWebSocket(onConnected) {
     if (!store.stationId) return
 
     const host = import.meta.env.VITE_WS_URL || `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`
-    let url = `${host}/ws/stations/${store.stationId}`
+    const url = `${host}/ws/stations/${store.stationId}`
 
+    // O token de DJ vai no subprotocolo (Sec-WebSocket-Protocol), não na URL:
+    // URLs ficam nos logs de acesso do servidor e do gateway (ADR-0005).
+    const protocols = ['radiosync.v1']
     if (store.role === 'dj' && store.djToken) {
-      url += `?role=dj&token=${store.djToken}`
+      protocols.push(`radiosync.auth.${store.djToken}`)
     }
 
-    const socket = new WebSocket(url)
+    const socket = new WebSocket(url, protocols)
 
     socket.onopen = () => {
       connected.value = true

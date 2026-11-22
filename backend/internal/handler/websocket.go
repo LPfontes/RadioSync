@@ -5,6 +5,7 @@ import (
 	"net/http"
 
 	"radio-backend/internal/auth"
+	"radio-backend/internal/security"
 	"radio-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
@@ -12,12 +13,17 @@ import (
 	gorillaWS "github.com/gorilla/websocket"
 )
 
+// O CheckOrigin padrão é o mesmo do gorilla (só mesma origem); o main.go
+// troca pela regra com allowlist via SetWebSocketOriginCheck (ADR-0005).
 var upgrader = gorillaWS.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
-	CheckOrigin: func(r *http.Request) bool {
-		return true
-	},
+	CheckOrigin:     security.CheckWebSocketOrigin(nil),
+}
+
+// SetWebSocketOriginCheck define a validação de Origin no upgrade do WebSocket.
+func SetWebSocketOriginCheck(check func(r *http.Request) bool) {
+	upgrader.CheckOrigin = check
 }
 
 func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
@@ -32,8 +38,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// O token de DJ vem no Sec-WebSocket-Protocol, nunca na URL (ver wsauth.go).
+	// Um ?token= de clientes antigos é ignorado: a conexão entra como ouvinte.
 	role := "listener"
-	token := r.URL.Query().Get("token")
+	token, offersV1 := wsTokenFromProtocols(r)
+	if r.URL.Query().Has("token") {
+		log.Printf("ws %s: token na query string ignorado (cliente desatualizado)", stationID)
+	}
 	if token != "" && auth.ValidateDJToken(token, stationID) {
 		if !station.Hub.HasDJConnected() {
 			role = "dj"
@@ -42,7 +53,13 @@ func HandleWebSocket(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	conn, err := upgrader.Upgrade(w, r, nil)
+	// Responde só com "radiosync.v1": o subprotocolo com o token não é ecoado.
+	var respHeader http.Header
+	if offersV1 {
+		respHeader = http.Header{"Sec-Websocket-Protocol": {wsProtocol}}
+	}
+
+	conn, err := upgrader.Upgrade(w, r, respHeader)
 	if err != nil {
 		log.Printf("erro upgrade ws: %v", err)
 		return

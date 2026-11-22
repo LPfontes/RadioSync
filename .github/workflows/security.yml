@@ -1,0 +1,187 @@
+# DevSecOps / Security shift-left (ADR-0005, issue #17).
+#
+# Bloqueiam o merge (gates):
+#   - go-deps    SCA do Go: govulncheck (só CVEs alcançáveis pelo código)
+#   - npm-deps   SCA do frontend: npm audit, nível high
+#   - secrets    gitleaks no histórico inteiro (baseline em .gitleaksignore)
+#   - container  Trivy na imagem: HIGH/CRITICAL com correção disponível
+#
+# Só reportam na aba Security > Code scanning (sem bloquear, por enquanto):
+#   - sast       gosec (SAST do Go)
+#   - container  Trivy config (Dockerfile e compose)
+# E geram artefato:
+#   - container  SBOM SPDX da imagem (syft)
+#
+# Actions fixadas por SHA de commit (a tag pode ser movida; o SHA não) e
+# ferramentas fixadas por versão, com checksum quando baixadas como binário.
+
+name: Security
+
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+  schedule:
+    # Toda segunda: CVEs novas aparecem mesmo sem mudança no código
+    - cron: "0 9 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: security-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  GOVULNCHECK_VERSION: v1.10.0
+  GOSEC_VERSION: v2.30.0
+  GITLEAKS_VERSION: 8.30.1
+  TRIVY_IMAGE: aquasec/trivy:0.76.2
+  SYFT_IMAGE: anchore/syft:v1.57.2
+
+jobs:
+  go-deps:
+    name: SCA Go (govulncheck)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@${GOVULNCHECK_VERSION} ./...
+
+  npm-deps:
+    name: SCA frontend (npm audit)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 22
+      - name: npm audit (high ou pior)
+        # Lê só o package-lock.json; não precisa instalar nada
+        run: npm audit --audit-level=high
+
+  secrets:
+    name: Segredos (gitleaks)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0 # histórico inteiro, não só o último commit
+      - name: Instalar gitleaks (com checksum)
+        run: |
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tgz="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          cd "$RUNNER_TEMP"
+          curl -sSfLO "$base/$tgz"
+          curl -sSfL "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt" | grep " $tgz\$" | sha256sum -c -
+          tar -xzf "$tgz" gitleaks
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+      - name: gitleaks (histórico inteiro)
+        # .gitleaksignore: só os achados antigos já tratados (ver o arquivo)
+        run: gitleaks git . --no-banner --redact --gitleaks-ignore-path .gitleaksignore --exit-code 1
+
+  sast:
+    name: SAST Go (gosec)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-go@d8cbb8045d7f43706b9177cceb36c1f91a6644d5 # v7.1.0
+        with:
+          go-version-file: backend/go.mod
+          cache-dependency-path: backend/go.sum
+      - name: gosec
+        working-directory: backend
+        run: go run github.com/securego/gosec/v2/cmd/gosec@${GOSEC_VERSION} -no-fail -fmt sarif -out ../gosec.sarif ./...
+      - name: Enviar para o Code scanning
+        if: always() && hashFiles('gosec.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: gosec.sarif
+          category: gosec
+
+  container:
+    name: Imagem (Trivy + SBOM)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build da imagem
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          push: false
+          tags: radiosync:scan
+          cache-from: type=gha,scope=security
+          cache-to: type=gha,mode=max,scope=security
+
+      - name: Cache do banco de vulnerabilidades do Trivy
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/trivy
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+
+      - name: Trivy imagem -> Code scanning
+        run: |
+          mkdir -p ~/.cache/trivy
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock \
+            -v ~/.cache/trivy:/root/.cache -v "$PWD:/out" \
+            "$TRIVY_IMAGE" image --scanners vuln --format sarif -o /out/trivy-image.sarif radiosync:scan
+
+      - name: Trivy config (Dockerfile e compose) -> Code scanning
+        run: |
+          docker run --rm -v ~/.cache/trivy:/root/.cache -v "$PWD:/repo" \
+            "$TRIVY_IMAGE" config --format sarif -o /repo/trivy-config.sarif /repo
+
+      - name: Enviar Trivy imagem para o Code scanning
+        if: always() && hashFiles('trivy-image.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: trivy-image.sarif
+          category: trivy-image
+
+      - name: Enviar Trivy config para o Code scanning
+        if: always() && hashFiles('trivy-config.sarif') != ''
+        uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
+        with:
+          sarif_file: trivy-config.sarif
+          category: trivy-config
+
+      - name: SBOM da imagem (SPDX)
+        run: |
+          docker run --rm -v /var/run/docker.sock:/var/run/docker.sock -v "$PWD:/out" \
+            "$SYFT_IMAGE" radiosync:scan -o spdx-json=/out/sbom.spdx.json
+
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: sbom-spdx
+          path: sbom.spdx.json
+          retention-days: 30
+
+      # Gate por último: os relatórios e o SBOM saem mesmo quando ele falha
+      - name: Gate - Trivy HIGH/CRITICAL com correção disponível
+        run: |
+          docker run --rm \
+            -v /var/run/docker.sock:/var/run/docker.sock -v ~/.cache/trivy:/root/.cache \
+            "$TRIVY_IMAGE" image --scanners vuln --severity HIGH,CRITICAL --ignore-unfixed \
+            --exit-code 1 radiosync:scan

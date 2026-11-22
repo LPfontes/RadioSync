@@ -4,6 +4,28 @@ const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || '',
 })
 
+// Respostas do gateway (rate limit e tamanho do corpo, ADR-0005) chegam em
+// inglês e sem JSON. Troca o corpo por uma mensagem que as telas já exibem.
+const GATEWAY_MESSAGES = {
+  413: () => 'Arquivo grande demais. O limite é 100 MB.',
+  429: (res) => {
+    const wait = parseInt(res.headers?.['retry-after'], 10)
+    return wait > 0
+      ? `Muitas requisições em pouco tempo. Tente de novo em ${wait} s.`
+      : 'Muitas requisições em pouco tempo. Aguarde um pouco e tente de novo.'
+  },
+}
+
+api.interceptors.response.use(undefined, (error) => {
+  const build = GATEWAY_MESSAGES[error?.response?.status]
+  const msg = build && build(error.response)
+  if (msg) {
+    error.response.data = msg
+    error.message = msg
+  }
+  return Promise.reject(error)
+})
+
 export function setDJToken(token) {
   if (token) {
     api.defaults.headers.common['Authorization'] = `Bearer ${token}`
@@ -73,28 +95,70 @@ export async function getGlobalLibrary() {
   return data
 }
 
-export async function getAdminStations() {
-  const { data } = await api.get('/api/v1/admin/stations')
+// ---------------------------------------------------------------- Admin
+// O token de admin fica no sessionStorage (some ao fechar a aba) e é enviado
+// explicitamente, sem passar pelo header padrão usado pelo token de DJ.
+const ADMIN_TOKEN_KEY = 'radiosync_admin_token'
+
+export function getAdminToken() {
+  try {
+    const raw = sessionStorage.getItem(ADMIN_TOKEN_KEY)
+    if (!raw) return null
+    const { token, expiresAt } = JSON.parse(raw)
+    if (!token || (expiresAt && Date.now() >= expiresAt)) {
+      sessionStorage.removeItem(ADMIN_TOKEN_KEY)
+      return null
+    }
+    return token
+  } catch {
+    return null
+  }
+}
+
+export function clearAdminToken() {
+  try { sessionStorage.removeItem(ADMIN_TOKEN_KEY) } catch { /* ignore */ }
+}
+
+function adminConfig() {
+  const token = getAdminToken()
+  return { headers: { Authorization: token ? `Bearer ${token}` : '' } }
+}
+
+export async function adminLogin(password) {
+  const { data } = await api.post('/api/v1/admin/login', { password })
+  try {
+    sessionStorage.setItem(ADMIN_TOKEN_KEY, JSON.stringify({ token: data.token, expiresAt: data.expiresAt }))
+  } catch { /* ignore */ }
   return data
 }
 
+export async function getAdminStations() {
+  const { data } = await api.get('/api/v1/admin/stations', adminConfig())
+  return data
+}
+
+export async function issueDJTokenAdmin(stationId) {
+  const { data } = await api.post(`/api/v1/admin/stations/${stationId}/dj-token`, null, adminConfig())
+  return data.djToken
+}
+
 export async function deleteStationAdmin(stationId) {
-  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}`)
+  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}`, adminConfig())
   return data
 }
 
 export async function purgeOrphanTracksAdmin() {
-  const { data } = await api.post('/api/v1/admin/purge-orphans')
+  const { data } = await api.post('/api/v1/admin/purge-orphans', null, adminConfig())
   return data
 }
 
 export async function removeTrackFromStationAdmin(stationId, trackId) {
-  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}/tracks/${trackId}`)
+  const { data } = await api.delete(`/api/v1/admin/stations/${stationId}/tracks/${trackId}`, adminConfig())
   return data
 }
 
 export async function renameTrackAdmin(trackId, title) {
-  const { data } = await api.put(`/api/v1/admin/tracks/${trackId}`, { title })
+  const { data } = await api.put(`/api/v1/admin/tracks/${trackId}`, { title }, adminConfig())
   return data
 }
 

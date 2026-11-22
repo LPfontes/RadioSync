@@ -1,6 +1,8 @@
 # Runtime data and dynamic station state
 data/
 data/*
+# Histórico local de deploys (scripts/deploy.sh)
+deploy/
 
 # Audio uploads & music files
 musicas/
@@ -31,3 +33,6 @@ frontend/dist/
 Thumbs.db
 .vscode/
 .idea/
+
+# Senha do dashboard do Traefik (gerada por scripts/traefik-dashboard-password.sh)
+infra/traefik/dashboard.htpasswd

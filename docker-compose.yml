@@ -14,7 +14,7 @@
 # Uso:  cp .env.example .env  &&  docker compose up -d --build
 #
 #   App (via gateway) ......... http://localhost            (ou :8080 direto)
-#   Traefik dashboard ......... http://localhost:8081
+#   Traefik dashboard ......... http://localhost:8081/dashboard/ (senha: scripts/traefik-dashboard-password.sh)
 #   RabbitMQ management ....... http://localhost:15672
 #   MinIO console ............. http://localhost:9001
 #   Prometheus ................ http://localhost:9090
@@ -30,18 +30,29 @@ services:
 
   radiosync:
     build: .
-    image: lpfonts/radiosync:latest
+    # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.
+    # Sem IMAGE_TAG cai em "latest" (desenvolvimento local).
+    image: ${RADIOSYNC_IMAGE:-lpfonts/radiosync}:${IMAGE_TAG:-latest}
     container_name: radiosync
     restart: unless-stopped
+    # Tempo para o salvamento final do estado no SIGTERM (ADR-0007)
+    stop_grace_period: 20s
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
       - PORT=8080
+      # Origens extras para CORS/WebSocket (vírgula). Vazio = só a mesma origem
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - MUSIC_DIR=/app/musicas
       - FRONTEND_DIR=/app/frontend/dist
+      - APP_VERSION=${IMAGE_TAG:-dev}
       - DATA_DIR=/app/data
       - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
+      # Sem ADMIN_PASSWORD as rotas /api/v1/admin respondem 503 (seguro por padrão)
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - ADMIN_TOKEN_TTL=${ADMIN_TOKEN_TTL:-8h}
       - POT_PROVIDER_URL=http://bgutil-provider:4416
+      - DJ_TOKEN_TTL=${DJ_TOKEN_TTL:-24h}
       # Variáveis já disponíveis para a migração (ainda não lidas pelo código):
       - REDIS_URL=redis://redis:6379/0
       - AMQP_URL=amqp://${RABBITMQ_USER:-radiosync}:${RABBITMQ_PASSWORD:-radiosync}@rabbitmq:5672/
@@ -65,9 +76,59 @@ services:
       - traefik.http.routers.radiosync.entrypoints=web
       - traefik.http.routers.radiosync.middlewares=api-ratelimit
       - traefik.http.services.radiosync.loadbalancer.server.port=8080
+      # ---- Limites por rota (ADR-0005), mais rígidos que o global, por IP ----
+      # Criar estação: evita criação em massa de salas (10/min, burst 5)
+      - traefik.http.routers.radiosync-create-station.rule=Method(`POST`) && (Path(`/api/v1/stations`) || Path(`/api/v1/stations/`))
+      - traefik.http.routers.radiosync-create-station.entrypoints=web
+      - traefik.http.routers.radiosync-create-station.priority=90
+      - traefik.http.routers.radiosync-create-station.service=radiosync
+      - traefik.http.routers.radiosync-create-station.middlewares=create-station-ratelimit
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.create-station-ratelimit.ratelimit.burst=5
+      # Upload e YouTube: CPU do FFmpeg/yt-dlp. 6/min (burst 3), no máximo
+      # 2 em andamento por IP e corpo até 100 MB (acima disso, 413)
+      - traefik.http.routers.radiosync-media.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/(upload|youtube)$`)
+      - traefik.http.routers.radiosync-media.entrypoints=web
+      - traefik.http.routers.radiosync-media.priority=90
+      - traefik.http.routers.radiosync-media.service=radiosync
+      - traefik.http.routers.radiosync-media.middlewares=media-ratelimit,media-inflight,media-bodylimit
+      - traefik.http.middlewares.media-ratelimit.ratelimit.average=6
+      - traefik.http.middlewares.media-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.media-ratelimit.ratelimit.burst=3
+      - traefik.http.middlewares.media-inflight.inflightreq.amount=2
+      - traefik.http.middlewares.media-inflight.inflightreq.sourcecriterion.ipstrategy.depth=0
+      - traefik.http.middlewares.media-bodylimit.buffering.maxRequestBodyBytes=104857600
+      # Assumir DJ: evita ficar tomando a bancada em loop (10/min, burst 5)
+      - traefik.http.routers.radiosync-claim-dj.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/claim-dj$`)
+      - traefik.http.routers.radiosync-claim-dj.entrypoints=web
+      - traefik.http.routers.radiosync-claim-dj.priority=90
+      - traefik.http.routers.radiosync-claim-dj.service=radiosync
+      - traefik.http.routers.radiosync-claim-dj.middlewares=claim-dj-ratelimit
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.average=10
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.claim-dj-ratelimit.ratelimit.burst=5
       # Rate limiting no gateway (padrão Rate Limit / Throttling)
       - traefik.http.middlewares.api-ratelimit.ratelimit.average=50
       - traefik.http.middlewares.api-ratelimit.ratelimit.burst=100
+      # Rotas de admin e diagnóstico: o gateway valida o JWT de admin antes de
+      # repassar (ForwardAuth -> /api/v1/admin/verify). O Go valida de novo,
+      # então o acesso direto pela porta 8080 também fica protegido (ADR-0005).
+      - traefik.http.routers.radiosync-admin.rule=(PathPrefix(`/api/v1/admin`) && !Path(`/api/v1/admin/login`)) || Path(`/api/v1/debug`)
+      - traefik.http.routers.radiosync-admin.entrypoints=web
+      - traefik.http.routers.radiosync-admin.priority=100
+      - traefik.http.routers.radiosync-admin.service=radiosync
+      - traefik.http.routers.radiosync-admin.middlewares=api-ratelimit,admin-auth
+      - traefik.http.middlewares.admin-auth.forwardauth.address=http://radiosync:8080/api/v1/admin/verify
+      # Login de admin: limite rígido por IP contra força bruta (5/min, burst 5)
+      - traefik.http.routers.radiosync-admin-login.rule=Path(`/api/v1/admin/login`)
+      - traefik.http.routers.radiosync-admin-login.entrypoints=web
+      - traefik.http.routers.radiosync-admin-login.priority=110
+      - traefik.http.routers.radiosync-admin-login.service=radiosync
+      - traefik.http.routers.radiosync-admin-login.middlewares=admin-login-ratelimit
+      - traefik.http.middlewares.admin-login-ratelimit.ratelimit.average=5
+      - traefik.http.middlewares.admin-login-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.admin-login-ratelimit.ratelimit.burst=5
 
   # ------------------------------------------------------------ API Gateway
   gateway:
@@ -81,15 +142,20 @@ services:
       - --providers.docker.exposedbydefault=false
       - --entrypoints.web.address=:80
       - --api.dashboard=true
-      - --api.insecure=true
+      # Sem --api.insecure: o dashboard só abre pelo router com senha de
+      # infra/traefik/dashboard.yml (ADR-0005)
+      - --providers.file.filename=/etc/traefik/dynamic/dashboard.yml
       - --entrypoints.traefik.address=:8081
       - --metrics.prometheus=true
       - --accesslog=true
     ports:
       - "${GATEWAY_PORT:-80}:80"
-      - "8081:8081"
+      # Dashboard e /metrics só na máquina local (use um túnel SSH no servidor).
+      # Para expor, defina TRAEFIK_DASHBOARD_BIND=0.0.0.0 no .env.
+      - "${TRAEFIK_DASHBOARD_BIND:-127.0.0.1}:8081:8081"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./infra/traefik:/etc/traefik/dynamic:ro
 
   # ---------------------------------------------------------- infraestrutura
   redis:
