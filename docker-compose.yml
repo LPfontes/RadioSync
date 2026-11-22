@@ -30,15 +30,20 @@ services:
 
   radiosync:
     build: .
-    image: lpfonts/radiosync:latest
+    # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.
+    # Sem IMAGE_TAG cai em "latest" (desenvolvimento local).
+    image: ${RADIOSYNC_IMAGE:-lpfonts/radiosync}:${IMAGE_TAG:-latest}
     container_name: radiosync
     restart: unless-stopped
+    # Tempo para o salvamento final do estado no SIGTERM (ADR-0007)
+    stop_grace_period: 20s
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
       - PORT=8080
       - MUSIC_DIR=/app/musicas
       - FRONTEND_DIR=/app/frontend/dist
+      - APP_VERSION=${IMAGE_TAG:-dev}
       - DATA_DIR=/app/data
       - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
       - POT_PROVIDER_URL=http://bgutil-provider:4416

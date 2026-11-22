@@ -27,4 +27,8 @@ ENV MUSIC_DIR=/app/musicas
 ENV FRONTEND_DIR=/app/frontend/dist
 ENV DATA_DIR=/app/data
 EXPOSE 8080
+# O deploy só troca o tráfego para a versão nova depois de /healthz responder
+# (ADR-0007). curl já está na imagem.
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -fsS http://localhost:8080/healthz || exit 1
 CMD ["./server"]
