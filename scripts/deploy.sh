@@ -76,12 +76,18 @@ switch_to() {
   IMAGE_TAG="$1" docker compose up -d --no-deps "$SERVICE" >/dev/null 2>&1
 }
 
-# Espera /healthz = 200 com a versão pedida. Consulta por dentro do container,
-# então funciona qualquer que seja a porta publicada.
+# Espera duas coisas:
+#  - /healthz = 200 com a versão pedida (consultado por dentro do container,
+#    então funciona qualquer que seja a porta publicada);
+#  - o HEALTHCHECK do Docker = healthy, porque o Traefik só manda tráfego para
+#    containers saudáveis. Sem isso o tempo medido seria menor do que o que o
+#    usuário sente pelo gateway.
 wait_healthy() {
-  local want="$1" deadline=$(( $(date +%s) + TIMEOUT )) body
+  local want="$1" deadline=$(( $(date +%s) + TIMEOUT )) body health
   while [ "$(date +%s)" -lt "$deadline" ]; do
-    if body="$(docker exec "$CONTAINER" curl -fsS http://localhost:8080/healthz 2>/dev/null)" \
+    health="$(docker inspect -f '{{if .State.Health}}{{.State.Health.Status}}{{end}}' "$CONTAINER" 2>/dev/null || true)"
+    if [ "$health" = "healthy" ] \
+       && body="$(docker exec "$CONTAINER" curl -fsS http://localhost:8080/healthz 2>/dev/null)" \
        && printf '%s' "$body" | grep -q "\"version\":\"$want\""; then
       return 0
     fi
@@ -94,7 +100,7 @@ T0="$(now_ms)"
 switch_to "$TAG"
 if wait_healthy "$TAG"; then
   T1="$(now_ms)"
-  log "ok: $TAG no ar e saudável; indisponibilidade do app: $(( T1 - T0 )) ms"
+  log "ok: $TAG no ar e saudável (Docker healthy); indisponibilidade: $(( T1 - T0 )) ms"
   record "$TAG" "ok" "$(( T1 - T0 ))ms (antes: ${PREV_TAG:-nenhuma})"
   exit 0
 fi
