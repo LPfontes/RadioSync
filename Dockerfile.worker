@@ -1,0 +1,33 @@
+FROM golang:1.26-alpine AS backend
+WORKDIR /app
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o media-worker ./cmd/worker/
+
+# Única imagem com FFmpeg e yt-dlp (ADR-0002). O Deno é usado pelo yt-dlp.
+FROM denoland/deno:alpine
+# apk upgrade: aplica as correções de segurança dos pacotes da imagem base
+# (o scan do Trivy no CI falha em HIGH/CRITICAL com correção disponível)
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ffmpeg ca-certificates python3 py3-pip curl && \
+    curl -fL https://github.com/yt-dlp/yt-dlp/releases/latest/download/yt-dlp -o /usr/local/bin/yt-dlp && \
+    chmod a+rx /usr/local/bin/yt-dlp && \
+    pip install --no-cache-dir --break-system-packages -U bgutil-ytdlp-pot-provider yt-dlp-ejs && \
+    addgroup -S -g 10001 radiosync && \
+    adduser -S -u 10001 -G radiosync -h /home/radiosync radiosync && \
+    mkdir -p /app/data && chown radiosync:radiosync /app/data
+WORKDIR /app
+COPY --from=backend --chown=radiosync:radiosync /app/media-worker .
+
+USER radiosync
+
+ENV PORT=8085
+ENV DATA_DIR=/app/data
+ENV DENO_DIR=/tmp/deno
+EXPOSE 8085
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=10s --retries=3 \
+  CMD curl -fsS http://localhost:8085/healthz || exit 1
+
+CMD ["./media-worker"]
