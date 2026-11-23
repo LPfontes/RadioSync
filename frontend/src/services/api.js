@@ -53,6 +53,8 @@ export async function claimDJRole(stationId) {
   return data
 }
 
+// Upload e YouTube são assíncronos (ADR-0002): respondem 202 com o job, e a
+// faixa chega depois por TRACK_READY no WebSocket ou por getMediaJobs.
 export async function uploadMusic(stationId, file, token, category = '', theme = '') {
   const form = new FormData()
   form.append('file', file)
@@ -66,6 +68,13 @@ export async function uploadMusic(stationId, file, token, category = '', theme =
 
 export async function downloadFromYouTube(stationId, youtubeUrl, token, category = '', theme = '') {
   const { data } = await api.post(`/api/v1/stations/${stationId}/youtube`, { url: youtubeUrl, category, theme }, {
+    headers: { 'Authorization': `Bearer ${token}` },
+  })
+  return data
+}
+
+export async function getMediaJobs(stationId, token) {
+  const { data } = await api.get(`/api/v1/stations/${stationId}/jobs`, {
     headers: { 'Authorization': `Bearer ${token}` },
   })
   return data
