@@ -1,16 +1,19 @@
 import { defineConfig } from 'vite'
 import vue from '@vitejs/plugin-vue'
 
+// Padrão: o gateway do docker compose, que roteia para todos os serviços.
+const target = process.env.VITE_PROXY_TARGET || 'http://localhost'
+
 export default defineConfig({
   plugins: [vue()],
   server: {
     proxy: {
-      '/api': 'http://localhost:8080',
+      '/api': target,
       '/ws': {
-        target: 'ws://localhost:8080',
+        target: target.replace(/^http/, 'ws'),
         ws: true,
       },
-      '/musicas': 'http://localhost:8080',
+      '/musicas': target,
     },
   },
 })

@@ -1,0 +1,28 @@
+FROM golang:1.26-alpine AS backend
+WORKDIR /app
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o media-api ./cmd/media/
+
+FROM alpine:3.21
+# UID/GID iguais aos do Dockerfile.worker: os dois compartilham o volume com o
+# cookies.txt (0600)
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates curl && \
+    addgroup -S -g 10001 radiosync && \
+    adduser -S -u 10001 -G radiosync radiosync && \
+    mkdir -p /app/data && chown radiosync:radiosync /app/data
+WORKDIR /app
+COPY --from=backend --chown=radiosync:radiosync /app/media-api .
+
+USER radiosync
+
+ENV PORT=8084
+ENV DATA_DIR=/app/data
+EXPOSE 8084
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS http://localhost:8084/healthz || exit 1
+
+CMD ["./media-api"]

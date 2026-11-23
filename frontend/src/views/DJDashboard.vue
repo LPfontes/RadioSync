@@ -87,7 +87,7 @@
                   :disabled="downloadingYT || !youtubeUrl.trim()"
                   class="btn btn-danger"
                 >
-                  {{ downloadingYT ? 'Baixando...' : 'Baixar' }}
+                  {{ downloadingYT ? 'Enviando...' : 'Baixar' }}
                 </button>
               </div>
               <div v-if="youtubeUrl.trim()" class="file-meta-box two-col-grid">
@@ -164,6 +164,25 @@
             <p v-if="ytError" class="error-text">{{ ytError }}</p>
           </div>
         </div>
+
+        <!-- Uploads e downloads em processamento (fila assíncrona) -->
+        <ul v-if="store.jobs.length > 0" class="jobs-list" aria-live="polite">
+          <li v-for="job in store.jobs" :key="job.jobId" class="job-item" :class="{ failed: job.status === 'failed' }">
+            <RefreshCw v-if="job.status !== 'failed'" class="icon-sm text-emerald animate-spin" />
+            <X v-else class="icon-sm text-red" />
+            <span class="job-title truncate" :title="job.title">{{ job.title || 'Música' }}</span>
+            <span class="job-status">{{ jobLabel(job) }}</span>
+            <button
+              v-if="job.status === 'failed'"
+              @click="dismissJob(job.jobId)"
+              class="edit-icon-btn"
+              title="Dispensar"
+              aria-label="Dispensar"
+            >
+              <X class="icon-xs" />
+            </button>
+          </li>
+        </ul>
       </div>
 
       <div class="dj-three-col">
@@ -593,11 +612,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { Plus, X, SkipForward, Copy, Folder, Library, Search, RefreshCw, Youtube, Key, Play, Disc, MessageSquare, Check, Edit2, Tag, Filter, Music, Image as ImageIcon, GripVertical } from 'lucide-vue-next'
 import { useStationStore } from '../stores/station'
-import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, saveYouTubeCookies, getCookiesStatus, getStation, updateTrackMetadata } from '../services/api'
+import { uploadMusic, getRepository, getGlobalLibrary, downloadFromYouTube, getMediaJobs, saveYouTubeCookies, getCookiesStatus, getStation, updateTrackMetadata } from '../services/api'
 import { useWebSocket } from '../composables/useWebSocket'
 import { getSavedStations, saveStation, removeStation } from '../services/storage'
 import Player from '../components/Player.vue'
@@ -710,6 +729,7 @@ onMounted(async () => {
     saveStation(id, 'dj', store.djToken)
     connect()
     checkCookiesStatus()
+    refreshJobs(true)
     try {
       const data = await getStation(id)
       if (data.state) store.setState(data.state)
@@ -724,6 +744,51 @@ onMounted(async () => {
     }
   }
 })
+
+// ------------------------------------------------ jobs de mídia (ADR-0002)
+const JOB_POLL_MS = 5000
+let jobTimer = null
+
+const activeJobs = computed(() => store.jobs.filter(j => j.status !== 'failed'))
+
+function jobLabel(job) {
+  if (job.status === 'failed') return job.error || 'Não foi possível processar'
+  if (job.status === 'retrying') return `processando… (nova tentativa ${job.attempt})`
+  if (job.status === 'queued') return 'na fila…'
+  return 'processando…'
+}
+
+// O aviso normal vem pelo WebSocket. A consulta cobre o que ele não garante:
+// página recarregada e evento perdido numa reconexão.
+async function refreshJobs(initial = false) {
+  try {
+    const list = await getMediaJobs(store.stationId, store.djToken)
+    const byId = new Map(list.map(j => [j.jobId, j]))
+    if (initial) {
+      list.filter(j => j.status !== 'ready' && j.status !== 'failed').forEach(store.applyJob)
+      return
+    }
+    for (const { jobId } of [...activeJobs.value]) {
+      if (byId.has(jobId)) store.applyJob(byId.get(jobId))
+      else store.removeJob(jobId)
+    }
+  } catch { /* tenta de novo no próximo ciclo */ }
+}
+
+function dismissJob(jobId) {
+  store.removeJob(jobId)
+}
+
+watch(() => activeJobs.value.length > 0, (active) => {
+  clearInterval(jobTimer)
+  jobTimer = active ? setInterval(() => refreshJobs(), JOB_POLL_MS) : null
+})
+
+watch(() => store.repository.length, () => {
+  if (globalTracks.value.length > 0) fetchGlobalLibrary()
+})
+
+onUnmounted(() => clearInterval(jobTimer))
 
 async function checkCookiesStatus() {
   try {
@@ -791,13 +856,12 @@ async function handleUpload() {
   uploading.value = true
   uploadError.value = ''
   try {
-    const track = await uploadMusic(store.stationId, selectedFile.value, store.djToken, uploadCategory.value, uploadTheme.value)
-    store.repository.push(track)
+    const job = await uploadMusic(store.stationId, selectedFile.value, store.djToken, uploadCategory.value, uploadTheme.value)
+    store.applyJob(job)
     selectedFile.value = null
     uploadCategory.value = ''
     uploadTheme.value = ''
     if (fileInputRef.value) fileInputRef.value.value = ''
-    if (globalTracks.value.length > 0) fetchGlobalLibrary()
   } catch (e) {
     const msg = e?.response?.data || e.message || 'Erro desconhecido'
     uploadError.value = typeof msg === 'string' ? msg : 'Erro no upload'
@@ -813,12 +877,11 @@ async function handleYouTubeDownload() {
   ytError.value = ''
 
   try {
-    const track = await downloadFromYouTube(store.stationId, url, store.djToken, ytCategory.value, ytTheme.value)
-    store.repository.push(track)
+    const job = await downloadFromYouTube(store.stationId, url, store.djToken, ytCategory.value, ytTheme.value)
+    store.applyJob(job)
     youtubeUrl.value = ''
     ytCategory.value = ''
     ytTheme.value = ''
-    if (globalTracks.value.length > 0) fetchGlobalLibrary()
   } catch (e) {
     const msg = e?.response?.data || e.message || 'Erro no download do YouTube'
     ytError.value = typeof msg === 'string' ? msg : 'Erro ao baixar do YouTube'
@@ -872,7 +935,11 @@ async function handleSaveEdit() {
 }
 
 function addToPlaylist(trackId) {
-  send({ type: 'ADD_TO_PLAYLIST', data: { trackId } })
+  // O Sync Service não tem o repositório da estação: precisa da faixa inteira.
+  // Capas em data: URL ficam de fora por causa do limite de 4 KB da mensagem.
+  let track = store.repository.find(t => t.id === trackId)
+  if (track?.coverUrl?.startsWith('data:')) track = { ...track, coverUrl: '' }
+  send({ type: 'ADD_TO_PLAYLIST', data: { trackId, track } })
 }
 
 function addGlobalTrack(track) {
@@ -941,8 +1008,20 @@ function onDragEnd() {
   dragOverIndex.value = null
 }
 
-function approveSuggestion(sug) {
+const YOUTUBE_LINK = /(?:https?:\/\/)?(?:(?:www|m|music)\.)?(?:youtube\.com|youtu\.be)\/\S+/i
+
+async function approveSuggestion(sug) {
   send({ type: 'APPROVE_SUGGESTION', data: { suggestionId: sug.id } })
+
+  // Sugestão com link do YouTube vira um job de download
+  const link = sug.trackId ? null : `${sug.url || ''} ${sug.title || ''}`.match(YOUTUBE_LINK)?.[0]
+  if (!link) return
+  try {
+    store.applyJob(await downloadFromYouTube(store.stationId, /^https?:/i.test(link) ? link : `https://${link}`, store.djToken))
+  } catch (e) {
+    const msg = e?.response?.data || e.message
+    ytError.value = typeof msg === 'string' ? msg : 'Erro ao baixar do YouTube'
+  }
 }
 
 function rejectSuggestion(suggestionId) {
@@ -1813,6 +1892,39 @@ function leave() {
 .cover-input-row {
   display: flex;
   gap: 0.5rem;
+}
+
+.jobs-list {
+  list-style: none;
+  margin: 1rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.job-item {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 8px;
+  font-size: 0.8rem;
+}
+
+.job-item.failed {
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.job-title {
+  flex: 1;
+  text-align: left;
+  min-width: 0;
+}
+
+.job-status {
+  opacity: 0.75;
 }
 
 .cover-upload-row {

@@ -1,0 +1,26 @@
+FROM golang:1.26-alpine AS backend
+WORKDIR /app
+COPY backend/go.mod backend/go.sum ./
+RUN go mod download
+COPY backend/ .
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o station-service ./cmd/station/
+RUN CGO_ENABLED=0 go build -ldflags="-w -s" -o importer ./cmd/importer/
+
+FROM alpine:3.21
+RUN apk upgrade --no-cache && \
+    apk add --no-cache ca-certificates curl && \
+    addgroup -S radiosync && \
+    adduser -S -G radiosync radiosync
+WORKDIR /app
+COPY --from=backend --chown=radiosync:radiosync /app/station-service .
+COPY --from=backend --chown=radiosync:radiosync /app/importer .
+
+USER radiosync
+
+ENV PORT=8083
+EXPOSE 8083
+
+HEALTHCHECK --interval=10s --timeout=3s --start-period=5s --retries=3 \
+  CMD curl -fsS http://localhost:8083/healthz || exit 1
+
+CMD ["./station-service"]

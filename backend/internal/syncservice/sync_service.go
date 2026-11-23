@@ -12,6 +12,7 @@ import (
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
+	"radio-backend/internal/jobs"
 	"radio-backend/internal/metrics"
 	"radio-backend/internal/model"
 	"radio-backend/internal/security"
@@ -233,6 +234,9 @@ func (s *SyncService) handleRemoteEvent(hub *SyncHub, ev *RedisEvent) {
 			})
 		}
 	case "DJ_STATUS":
+		hub.Broadcast <- ev.Payload
+	case jobs.EventTrackReady, jobs.EventTrackFailed:
+		// Vêm do Media Worker já no formato da mensagem WebSocket (ADR-0002).
 		hub.Broadcast <- ev.Payload
 	case "PLAYLIST_UPDATED":
 		var pl []model.Track

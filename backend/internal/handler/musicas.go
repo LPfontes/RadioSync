@@ -1,6 +1,7 @@
 package handler
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -82,7 +83,7 @@ func GetAllLibraryTracks() []model.Track {
 					if catTrack, ok := GetTrackMetadata(trackID); ok {
 						trackMap[catTrack.ID] = catTrack
 					} else {
-						duration, _ := media.GetDuration(filepath.Join(dir, filename))
+						duration, _ := media.GetDuration(context.Background(), filepath.Join(dir, filename))
 						t := model.Track{
 							ID:       trackID,
 							Title:    "Música " + trackID,

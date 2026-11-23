@@ -15,15 +15,6 @@ func DebugHandler(w http.ResponseWriter, r *http.Request) {
 	}
 	stationsMu.RUnlock()
 
-	persistFile := persistPath()
-	fileInfo, _ := os.Stat(persistFile)
-	fileSize := int64(0)
-	fileExists := false
-	if fileInfo != nil {
-		fileSize = fileInfo.Size()
-		fileExists = true
-	}
-
 	dataDir := dataDir()
 	dataEntries, _ := os.ReadDir(dataDir)
 
@@ -32,11 +23,7 @@ func DebugHandler(w http.ResponseWriter, r *http.Request) {
 		"stations_loaded": count,
 		"station_ids":     ids,
 		"data_dir":        dataDir,
-		"persist_file": map[string]interface{}{
-			"path":   persistFile,
-			"exists": fileExists,
-			"size":   fileSize,
-		},
+		"storage_backend": "postgres+minio",
 		"data_dir_contents": func() []string {
 			var names []string
 			for _, e := range dataEntries {

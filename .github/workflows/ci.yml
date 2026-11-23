@@ -16,6 +16,29 @@ jobs:
     defaults:
       run:
         working-directory: backend
+    # Mesmas versões do docker-compose.yml. Sem elas os testes de integração
+    # caem nas implementações em memória e não exercitam SQL nem AMQP.
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: radiosync
+          POSTGRES_PASSWORD: radiosync
+          POSTGRES_DB: radiosync
+        ports: ["5432:5432"]
+        options: --health-cmd "pg_isready -U radiosync" --health-interval 5s --health-timeout 3s --health-retries 20
+      redis:
+        image: redis:7-alpine
+        ports: ["6379:6379"]
+        options: --health-cmd "redis-cli ping" --health-interval 5s --health-timeout 3s --health-retries 20
+      rabbitmq:
+        image: rabbitmq:3.13-management-alpine
+        ports: ["5672:5672"]
+        options: --health-cmd "rabbitmq-diagnostics -q check_port_connectivity" --health-start-period 20s --health-interval 15s --health-timeout 10s --health-retries 12
+    env:
+      TEST_DATABASE_URL: postgres://radiosync:radiosync@localhost:5432/radiosync?sslmode=disable
+      TEST_REDIS_URL: redis://localhost:6379/0
+      TEST_AMQP_URL: amqp://guest:guest@localhost:5672/
     steps:
       - uses: actions/checkout@v4
 
@@ -34,7 +57,7 @@ jobs:
         run: go tool cover -func=coverage.out | tail -1
 
       - name: Build
-        run: CGO_ENABLED=0 go build -o server ./cmd/server/
+        run: CGO_ENABLED=0 go build ./...
 
   frontend:
     name: Frontend (Vue) — build

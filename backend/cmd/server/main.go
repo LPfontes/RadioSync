@@ -51,9 +51,6 @@ func main() {
 	os.MkdirAll(musicDir, 0755)
 	log.Printf("Diretório de músicas: %s", musicDir)
 
-	handler.LoadTracksCatalog()
-	handler.LoadStations()
-	go handler.PeriodicSave()
 	handler.SaveOnShutdown()
 
 	fileServer := http.FileServer(http.Dir(musicDir))
@@ -64,10 +61,7 @@ func main() {
 	r.Route("/api/v1/stations", func(r chi.Router) {
 		r.Post("/", handler.CreateStation)
 		r.Get("/{stationId}", handler.GetStation)
-		r.Post("/{stationId}/upload", handler.UploadMusic)
-		r.Post("/{stationId}/youtube", handler.DownloadYouTubeHandler)
-		r.Post("/{stationId}/cookies", handler.UploadCookiesHandler)
-		r.Get("/{stationId}/cookies/status", handler.GetCookiesStatusHandler)
+		// upload, youtube, jobs e cookies: Media API (cmd/media, ADR-0002)
 		r.Get("/{stationId}/repository", handler.GetRepository)
 		r.Get("/{stationId}/musicas", handler.ListMusicFiles)
 		r.Get("/{stationId}/library", handler.GetGlobalLibrary)
@@ -95,7 +89,6 @@ func main() {
 			r.Post("/purge-orphans", handler.PurgeOrphanTracksAdmin)
 			r.Delete("/stations/{stationId}/tracks/{trackId}", handler.RemoveTrackFromStationAdmin)
 			r.Put("/tracks/{trackId}", handler.RenameTrackAdmin)
-			r.Post("/cookies", handler.SaveCookiesAdmin)
 		})
 	})
 
