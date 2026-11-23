@@ -56,6 +56,8 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
+	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(metrics.HTTPMiddleware("sync"))
 	r.Use(chimw.Recoverer)
 
 	// Métricas Prometheus (tarefa Membro 5 / observabilidade)

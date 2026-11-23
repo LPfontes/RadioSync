@@ -10,6 +10,7 @@ import (
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
+	"radio-backend/internal/metrics"
 	"radio-backend/internal/security"
 
 	"github.com/go-chi/chi/v5"
@@ -34,6 +35,8 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
+	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(metrics.HTTPMiddleware("server"))
 	r.Use(chimw.Recoverer)
 
 	// CORS e Origin do WebSocket restritos (ADR-0005): mesma origem por
@@ -127,6 +130,32 @@ func main() {
 		MaxHeaderBytes:    1 << 20,
 	}
 
+	// /metrics NÃO fica no roteador público: o gateway encaminha qualquer
+	// caminho (PathPrefix "/") para este serviço, então a rota ficaria aberta
+	// na internet. Vai numa porta interna, que só o Prometheus alcança pela
+	// rede do Compose (a porta não é publicada).
+	go serveMetrics()
+
 	log.Printf("Servidor rodando na porta %s", port)
 	log.Fatal(srv.ListenAndServe())
+}
+
+// serveMetrics expõe /metrics numa porta interna (METRICS_PORT, padrão 9100).
+// Se a porta não abrir, o app segue no ar: observabilidade não derruba o serviço.
+func serveMetrics() {
+	port := os.Getenv("METRICS_PORT")
+	if port == "" {
+		port = "9100"
+	}
+	mux := http.NewServeMux()
+	mux.Handle("/metrics", metrics.Handler())
+	srv := &http.Server{
+		Addr:              ":" + port,
+		Handler:           mux,
+		ReadHeaderTimeout: 10 * time.Second,
+	}
+	log.Printf("Métricas Prometheus em :%s/metrics (rede interna)", port)
+	if err := srv.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+		log.Printf("AVISO: servidor de métricas parou: %v", err)
+	}
 }

@@ -65,6 +65,8 @@ func NewService(cfg Config) *Service {
 func (s *Service) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
+	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(metrics.HTTPMiddleware("media"))
 	r.Use(chimw.Recoverer)
 	r.Use(security.CORS(s.cfg.AllowedOrigins))
 

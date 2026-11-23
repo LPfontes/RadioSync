@@ -11,12 +11,13 @@ scrape_configs:
     static_configs:
       - targets: ["gateway:8081"]
 
-  # Métricas da aplicação: o endpoint /metrics ainda será criado no backend Go
-  # (tarefa do Membro 5). Até lá, este alvo aparece como DOWN no Prometheus.
+  # Monólito (cmd/server): latência e erros HTTP por rota. O /metrics fica numa
+  # porta interna (9100), fora do roteador público, porque o gateway encaminha
+  # qualquer caminho para este serviço.
   - job_name: radiosync
     metrics_path: /metrics
     static_configs:
-      - targets: ["radiosync:8080"]
+      - targets: ["radiosync:9100"]
 
   # Métricas do Sync Service (conexões ativas, mensagens por segundo, fan-out)
   - job_name: sync
