@@ -12,7 +12,12 @@ Rodam em todo push com `go test -race ./...`.
 | `auth` | JWT do DJ: válido, outra estação, outro segredo, sem claim `dj`, `alg=none` | `internal/auth/jwt_test.go` |
 | `model` | `calcPosition` (núcleo da sincronização) e extração de URL do YouTube | `internal/model/station_test.go` |
 | `handler` | Código da estação (alfabeto, tamanho, colisões) e ID do YouTube | `internal/handler/station_test.go` |
-| `media` | Formatos de áudio aceitos/recusados | `internal/media/convert_test.go` |
+| `media` | Formatos de áudio aceitos/recusados, ID do vídeo, erros definitivos e cookies | `internal/media/*_test.go` |
+| `breaker` | Máquina de estados do circuit breaker | `internal/breaker/breaker_test.go` |
+| `queue` | Backoff, reentrega, retry e DLQ (memória e RabbitMQ real) | `internal/queue/queue_test.go` |
+| `jobs` | Andamento e lock dos jobs (memória e Redis real) | `internal/jobs/jobs_test.go` |
+| `mediaservice` | Media API: 202, recusas e dependências fora do ar | `internal/mediaservice/service_test.go` |
+| `mediaworker` | INT-02, RES-02, RES-03 e idempotência | `internal/mediaworker/*_test.go` |
 | `ws` | Fan-out do Hub para todos os clientes e detecção de DJ | `internal/ws/hub_test.go` |
 
 > O teste de `ExtractYouTubeURL` encontrou um bug: uma sugestão com texto e
@@ -32,6 +37,8 @@ Rodam em todo push com `go test -race ./...`.
 | INT-05 | Rotas migradas pelo gateway respondem igual ao monolito | ADR-0003 | Mesmo status e corpo |
 
 Ferramenta: testes Go com `httptest` + Docker Compose (ou Testcontainers).
+No CI, os testes usam Postgres, Redis e RabbitMQ reais (`TEST_DATABASE_URL`,
+`TEST_REDIS_URL` e `TEST_AMQP_URL`). Resultados da frente de mídia: ADR-0002.
 
 ## 3. Testes de carga (k6)
 

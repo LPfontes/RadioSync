@@ -91,7 +91,7 @@ C4Container
 
 ## 2.3 Situação Implementada — Entrega 3 (as-built / Strangler Fig)
 
-Na Entrega 3, o **Sync Service** foi extraído com sucesso do monolito segundo o padrão **Strangler Fig** (ADR-0003). O Traefik intercepta todo tráfego de `/ws/*` com prioridade 100 e faz balanceamento de carga entre as réplicas ativas do Sync Service (`docker compose up -d --scale sync=N`).
+Na Entrega 3, o **Sync Service**, o **Station Service** e o **Media Service + Worker** foram extraídos do monolito segundo o padrão **Strangler Fig** (ADR-0003). O Traefik intercepta todo tráfego de `/ws/*` com prioridade 100 e faz balanceamento de carga entre as réplicas ativas do Sync Service (`docker compose up -d --scale sync=N`).
 
 ```mermaid
 C4Container
@@ -103,11 +103,14 @@ C4Container
 
     System_Boundary(rs, "RadioSync") {
         Container(spa, "Frontend SPA", "Vue 3, Pinia", "Player, painel do DJ, tela de escuta e cálculo de offset NTP.")
-        Container(gw, "API Gateway / LB", "Traefik v3.6", "Roteia /ws/* para o Sync Service e /* para o monolito com rate limit.")
+        Container(gw, "API Gateway / LB", "Traefik v3.6", "Roteia cada rota para o seu serviço, com rate limit.")
         Container(sync, "Sync Service (N réplicas)", "Go (cmd/sync), WebSocket", "Hub por estação, fan-out Redis Pub/Sub, estado quente, heartbeat e lock de DJ.")
-        Container(mono, "Servidor RadioSync (Monolito)", "Go (cmd/server)", "Rotas REST (/api/v1/*), upload, conversão FFmpeg e admin.")
-        ContainerDb(redis, "Redis", "Redis 7 (AOF)", "Canal station:{id}:events, estado station:{id}:state e lock station:{id}:dj.")
-        ContainerQueue(mq, "RabbitMQ", "RabbitMQ 3.13", "Infraestrutura de mensageria para transcodificação assíncrona.")
+        Container(mono, "Servidor RadioSync (Monolito)", "Go (cmd/server)", "Rotas de admin e SPA. Sem FFmpeg nem yt-dlp.")
+        Container(station, "Station Service (N réplicas)", "Go (cmd/station)", "Estações, playlist, biblioteca, tokens de DJ e áudio do MinIO.")
+        Container(media, "Media API (N réplicas)", "Go (cmd/media)", "Valida upload/URL, guarda o original, enfileira e responde 202.")
+        Container(worker, "Media Worker (N réplicas)", "Go (cmd/worker), FFmpeg, yt-dlp", "Converte com ack manual, retry, DLQ e circuit breaker.")
+        ContainerDb(redis, "Redis", "Redis 7 (AOF)", "Canal station:{id}:events, estado, lock de DJ, andamento e lock dos jobs de mídia.")
+        ContainerQueue(mq, "RabbitMQ", "RabbitMQ 3.13", "media.transcode, filas de retry e media.transcode.dlq.")
         ContainerDb(pg, "PostgreSQL", "Postgres 16", "Banco de dados relacional durável.")
         ContainerDb(minio, "MinIO", "S3 Storage", "Armazenamento de objetos de mídia.")
         Container(obs, "Prometheus + Grafana", "Observabilidade", "Scrape de /metrics do gateway e das réplicas do Sync Service.")
@@ -118,12 +121,24 @@ C4Container
     Rel(spa, gw, "Requisições HTTP e conexões WS", "HTTPS/WSS")
 
     Rel(gw, sync, "Roteia /ws/stations/* com load balancing", "WebSocket")
-    Rel(gw, mono, "Roteia /api/v1/* e estáticos", "HTTP")
+    Rel(gw, mono, "Roteia admin e estáticos", "HTTP")
+    Rel(gw, station, "Roteia /api/v1/stations* e /musicas", "HTTP")
+    Rel(gw, media, "Roteia /upload, /youtube, /jobs e /cookies", "HTTP")
 
     Rel(sync, redis, "Pub/Sub (events), estado quente (state) e lock DJ", "TCP/RESP")
-    Rel(mono, redis, "Compartilha estado e canais", "TCP/RESP")
+    Rel(station, pg, "Lê/grava", "SQL")
+    Rel(station, minio, "Lê .opus", "S3")
+    Rel(media, minio, "Grava original", "S3")
+    Rel(media, mq, "Publica job", "AMQP")
+    Rel(worker, mq, "Consome job", "AMQP")
+    Rel(worker, minio, "Grava .opus", "S3")
+    Rel(worker, pg, "Grava faixa", "SQL")
+    Rel(worker, redis, "TRACK_READY / TRACK_FAILED", "TCP/RESP")
+    Rel(worker, youtube, "yt-dlp", "HTTPS")
 
     Rel(obs, sync, "Raspa /metrics (conexões ativas, latência fan-out)", "HTTP")
+    Rel(obs, media, "Raspa /metrics (profundidade das filas)", "HTTP")
+    Rel(obs, worker, "Raspa /metrics (jobs, tentativas, breaker)", "HTTP")
     Rel(obs, gw, "Raspa métricas de requisições", "HTTP")
 
     UpdateLayoutConfig($c4ShapeInRow="4", $c4BoundaryInRow="1")
