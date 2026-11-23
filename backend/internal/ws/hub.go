@@ -84,7 +84,10 @@ func (h *Hub) Run() {
 			})
 
 		case message := <-h.Broadcast:
-			h.mu.RLock()
+			// Lock (e não RLock): o ramo "default" remove o cliente lento do
+			// mapa, e escrever no mapa segurando só o lock de leitura é corrida
+			// de dados com ClientCount/HasDJConnected.
+			h.mu.Lock()
 			for _, client := range h.Clients {
 				select {
 				case client.Send <- message:
@@ -93,7 +96,7 @@ func (h *Hub) Run() {
 					delete(h.Clients, client.ID)
 				}
 			}
-			h.mu.RUnlock()
+			h.mu.Unlock()
 		}
 	}
 }
