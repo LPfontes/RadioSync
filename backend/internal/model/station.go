@@ -4,23 +4,14 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
-	"os"
-	"path/filepath"
 	"strings"
 	"sync"
 	"time"
 
-	"radio-backend/internal/media"
 	"radio-backend/internal/ws"
-
-	"github.com/google/uuid"
 )
 
-var (
-	TrackResolver    func(trackID string) (Track, bool)
-	TrackRegisterer  func(t Track)
-	SaveStationsFunc func()
-)
+var TrackResolver func(trackID string) (Track, bool)
 
 type PlaybackState struct {
 	IsPlaying   bool    `json:"isPlaying"`
@@ -421,10 +412,9 @@ func (s *Station) HandleMessage(client *ws.Client, msg []byte) {
 					s.broadcastState()
 				}
 			} else {
-				ytURL := ExtractYouTubeURL(sug)
-				if ytURL != "" {
-					go s.processYouTubeSuggestion(sug, ytURL)
-				} else {
+				// Link do YouTube: o download é um job da Media API, pedido pelo
+				// painel do DJ ao aprovar. O yt-dlp só existe no worker (ADR-0002).
+				if ExtractYouTubeURL(sug) == "" {
 					targetTrack = Track{
 						ID:       sug.ID,
 						Title:    sug.Title,
@@ -552,56 +542,6 @@ func ExtractYouTubeURL(sug SongSuggestion) string {
 	}
 
 	return ""
-}
-
-func (s *Station) processYouTubeSuggestion(sug SongSuggestion, ytURL string) {
-	trackID := uuid.New().String()
-	musicDir := media.GetMusicDir()
-	_ = os.MkdirAll(musicDir, 0755)
-	opusPath := filepath.Join(musicDir, trackID+".opus")
-
-	log.Printf("Baixando sugestão do YouTube para estação %s: %s (URL: %s)", s.ID, sug.Title, ytURL)
-	title, duration, err := media.DownloadYouTubeAudio(ytURL, opusPath)
-	if err != nil {
-		log.Printf("Erro ao baixar sugestão do YouTube (%s): %v", ytURL, err)
-		return
-	}
-
-	if title == "" || title == "Vídeo do YouTube" {
-		if sug.Title != "" && !strings.Contains(strings.ToLower(sug.Title), "youtube.com") && !strings.Contains(strings.ToLower(sug.Title), "youtu.be") {
-			title = sug.Title
-		}
-	}
-
-	track := Track{
-		ID:       trackID,
-		Title:    title,
-		Filename: trackID + ".opus",
-		URL:      fmt.Sprintf("/musicas/%s.opus", trackID),
-		Duration: duration,
-	}
-
-	s.Lock()
-	s.Repository = append(s.Repository, track)
-	s.Playlist = append(s.Playlist, track)
-
-	if len(s.Playlist) == 1 {
-		s.State.CurrentSong = track.URL
-		s.State.Duration = track.Duration
-		s.State.SeekOffset = 0
-		s.State.StartedAt = time.Now().UnixMilli()
-		s.State.IsPlaying = true
-		s.broadcastState()
-	}
-	s.broadcastPlaylist()
-	s.Unlock()
-
-	if TrackRegisterer != nil {
-		TrackRegisterer(track)
-	}
-	if SaveStationsFunc != nil {
-		go SaveStationsFunc()
-	}
 }
 
 func (s *Station) broadcastState() {

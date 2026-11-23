@@ -1,6 +1,8 @@
 package media
 
 import (
+	"context"
+	"encoding/base64"
 	"errors"
 	"os"
 	"path/filepath"
@@ -48,6 +50,69 @@ func TestValidateYouTubeURL(t *testing.T) {
 	}
 }
 
+func TestYouTubeID(t *testing.T) {
+	casos := map[string]string{
+		"https://www.youtube.com/watch?v=dQw4w9WgXcQ":          "dQw4w9WgXcQ",
+		"https://www.youtube.com/watch?list=PL1&v=dQw4w9WgXcQ": "dQw4w9WgXcQ",
+		"https://music.youtube.com/watch?v=dQw4w9WgXcQ":        "dQw4w9WgXcQ",
+		"https://youtu.be/dQw4w9WgXcQ?t=10":                    "dQw4w9WgXcQ",
+		"https://www.youtube.com/shorts/dQw4w9WgXcQ":           "dQw4w9WgXcQ",
+		"https://www.youtube.com/embed/dQw4w9WgXcQ":            "dQw4w9WgXcQ",
+		"https://www.youtube.com/live/dQw4w9WgXcQ":             "dQw4w9WgXcQ",
+		"https://www.youtube.com/playlist?list=PL123":          "",
+		"https://www.youtube.com/watch?v=../../../etc":         "",
+		"https://www.youtube.com/@canal":                       "",
+		"https://youtu.be/":                                    "",
+		"https://vimeo.com/123":                                "",
+		"https://evil.example/watch?v=dQw4w9WgXcQ":             "",
+		"não é url": "",
+	}
+	for in, want := range casos {
+		if got := YouTubeID(in); got != want {
+			t.Errorf("YouTubeID(%q) = %q, esperado %q", in, got, want)
+		}
+	}
+}
+
+func TestIsVideoUnavailable(t *testing.T) {
+	if !isVideoUnavailable("ERROR: [youtube] abc: Private video. Sign in if you've been granted access") {
+		t.Error("vídeo privado é definitivo")
+	}
+	// Bloqueio anti-bot e rede são temporários: precisam de retry.
+	for _, s := range []string{"Sign in to confirm you're not a bot", "HTTP Error 429", "Unable to download webpage", ""} {
+		if isVideoUnavailable(s) {
+			t.Errorf("%q é temporário", s)
+		}
+	}
+}
+
+// Nenhum download usa o cookies.txt original: o yt-dlp regrava o arquivo.
+func TestCopyCookies(t *testing.T) {
+	data := t.TempDir()
+	t.Setenv("DATA_DIR", data)
+	if got := copyCookies(t.TempDir()); got != "" {
+		t.Fatalf("sem cookies.txt deveria devolver vazio, obtido %q", got)
+	}
+	const netscape = "# Netscape HTTP Cookie File\n"
+	base64Netscape := base64.StdEncoding.EncodeToString([]byte(netscape))
+	for _, content := range []string{netscape, base64Netscape} {
+		if err := os.WriteFile(filepath.Join(data, "cookies.txt"), []byte(content), 0600); err != nil {
+			t.Fatal(err)
+		}
+		dst := t.TempDir()
+		path := copyCookies(dst)
+		if filepath.Dir(path) != dst {
+			t.Fatalf("a cópia deveria ficar em %s, obtido %s", dst, path)
+		}
+		if got, _ := os.ReadFile(path); string(got) != netscape {
+			t.Fatalf("cookies copiados: %q", got)
+		}
+		if original, _ := os.ReadFile(filepath.Join(data, "cookies.txt")); string(original) != content {
+			t.Fatal("o original não pode mudar")
+		}
+	}
+}
+
 func TestAppendURL(t *testing.T) {
 	args := appendURL([]string{"--quiet", "--no-playlist"}, "https://youtu.be/x")
 	n := len(args)
@@ -72,7 +137,7 @@ func TestDownloadYouTubeAudio_ArgumentosDoYtDlp(t *testing.T) {
 	t.Setenv("DATA_DIR", t.TempDir())
 
 	// 1) Valor malicioso: recusado antes de qualquer execução.
-	if _, _, err := DownloadYouTubeAudio("--version", filepath.Join(dir, "a.opus")); !errors.Is(err, ErrInvalidYouTubeURL) {
+	if _, _, err := DownloadYouTubeAudio(context.Background(), "--version", filepath.Join(dir, "a.opus")); !errors.Is(err, ErrInvalidYouTubeURL) {
 		t.Fatalf("esperado ErrInvalidYouTubeURL, obtido %v", err)
 	}
 	if _, err := os.Stat(registro); err == nil {
@@ -81,7 +146,7 @@ func TestDownloadYouTubeAudio_ArgumentosDoYtDlp(t *testing.T) {
 
 	// 2) URL válida: toda chamada termina com "--" e a URL.
 	const videoURL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
-	title, _, err := DownloadYouTubeAudio(videoURL, filepath.Join(dir, "b.opus"))
+	title, _, err := DownloadYouTubeAudio(context.Background(), videoURL, filepath.Join(dir, "b.opus"))
 	if err != nil {
 		t.Fatalf("download com yt-dlp falso: %v", err)
 	}
