@@ -665,7 +665,7 @@
       "id": 12,
       "type": "timeseries",
       "title": "Requisições por código de status",
-      "description": "101 = handshake de WebSocket.",
+      "description": "101 = handshake de WebSocket, contado no momento do upgrade.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"
@@ -1428,7 +1428,7 @@
       "id": 26,
       "type": "timeseries",
       "title": "Requisições/s por código",
-      "description": "",
+      "description": "Código 0 = conexões WebSocket: o Traefik não registra o 101 do upgrade e as conta como 0 quando a conexão fecha. Nos painéis HTTP dos serviços o handshake aparece como 101.",
       "datasource": {
         "type": "prometheus",
         "uid": "prometheus"

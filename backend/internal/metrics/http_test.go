@@ -3,10 +3,13 @@ package metrics
 import (
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
+	"time"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	"github.com/gorilla/websocket"
 	"github.com/prometheus/client_golang/prometheus"
 	dto "github.com/prometheus/client_model/go"
 )
@@ -185,5 +188,68 @@ func TestHTTPMiddleware_ExpostoEmMetrics(t *testing.T) {
 		if !achou[nome] {
 			t.Errorf("métrica %s não aparece no registro padrão", nome)
 		}
+	}
+}
+
+// O gorilla/websocket faz Hijack e escreve o 101 na conexão crua, sem passar
+// pelo WriteHeader. Por isso o handshake precisa ser contado no Hijack: se fosse
+// quando o handler retorna, só apareceria ao FECHAR a conexão, e com código 200.
+func TestHTTPMiddleware_WebSocketReal_Conta101NoHandshake(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(HTTPMiddleware("teste-wsreal"))
+	fechar := make(chan struct{})
+	up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return true }}
+	r.Get("/ws/stations/{stationId}", func(w http.ResponseWriter, r *http.Request) {
+		c, err := up.Upgrade(w, r, nil)
+		if err != nil {
+			return
+		}
+		<-fechar // o handler só retorna quando a conexão acaba
+		c.Close()
+	})
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+	defer close(fechar)
+
+	conn, _, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/stations/ABC", nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer conn.Close()
+
+	// conexão aberta e handler ainda preso: o 101 já tem de estar contado
+	prazo := time.Now().Add(2 * time.Second)
+	for contador(t, "teste-wsreal", "GET", "/ws/stations/{stationId}", "101") < 1 {
+		if time.Now().After(prazo) {
+			t.Fatal("o handshake não foi contado como 101 enquanto a conexão estava aberta")
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	if got := contador(t, "teste-wsreal", "GET", "/ws/stations/{stationId}", "200"); got != 0 {
+		t.Errorf("o handshake foi contado como 200 (%v vezes)", got)
+	}
+}
+
+// Upgrade recusado (ex.: Origin inválida) não faz Hijack: vale o status real.
+func TestHTTPMiddleware_WebSocketRecusado_ContaOStatusReal(t *testing.T) {
+	r := chi.NewRouter()
+	r.Use(HTTPMiddleware("teste-wsnegado"))
+	up := websocket.Upgrader{CheckOrigin: func(*http.Request) bool { return false }}
+	r.Get("/ws/stations/{stationId}", func(w http.ResponseWriter, r *http.Request) {
+		_, _ = up.Upgrade(w, r, nil) // responde 403 sozinho
+	})
+	srv := httptest.NewServer(r)
+	defer srv.Close()
+
+	_, resp, err := websocket.DefaultDialer.Dial("ws"+strings.TrimPrefix(srv.URL, "http")+"/ws/stations/ABC",
+		http.Header{"Origin": {"http://evil.example"}})
+	if err == nil {
+		t.Fatal("o upgrade deveria ter sido recusado")
+	}
+	if resp == nil || resp.StatusCode != http.StatusForbidden {
+		t.Fatalf("resposta = %v, quer 403", resp)
+	}
+	if got := contador(t, "teste-wsnegado", "GET", "/ws/stations/{stationId}", "403"); got != 1 {
+		t.Errorf("403 contado %v vezes, quer 1", got)
 	}
 }
