@@ -39,6 +39,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-sync
       - PORT=8082
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
@@ -65,6 +68,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-station
       - PORT=8083
       - APP_VERSION=${IMAGE_TAG:-dev}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -121,6 +127,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-media
       - PORT=8084
       - APP_VERSION=${IMAGE_TAG:-dev}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -191,6 +200,9 @@ services:
     cpus: ${WORKER_CPUS:-1.5}
     mem_limit: ${WORKER_MEMORY:-1g}
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-worker
       - PORT=8085
       - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
       - MEDIA_JOB_TIMEOUT=${MEDIA_JOB_TIMEOUT:-10m}
@@ -227,6 +239,9 @@ services:
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-server
       - PORT=8080
       # Origens extras para CORS/WebSocket (vírgula). Vazio = só a mesma origem
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -318,6 +333,10 @@ services:
       - --entrypoints.traefik.address=:8081
       - --metrics.prometheus=true
       - --accesslog=true
+      # Tracing: o gateway abre o trace e propaga o traceparent para os serviços
+      - --tracing=true
+      - --tracing.serviceName=gateway
+      - --tracing.otlp.http.endpoint=http://jaeger:4318/v1/traces
     ports:
       - "${GATEWAY_PORT:-80}:80"
       # Dashboard e /metrics só na máquina local (use um túnel SSH no servidor).
@@ -396,6 +415,15 @@ services:
       - minio-data:/data
 
   # --------------------------------------------------------- observabilidade
+  jaeger:
+    # Jaeger v2: recebe OTLP (4318 HTTP) e guarda os traces em memória. A UI fica
+    # em http://localhost:16686. Em memória: os traces somem ao reiniciar o container.
+    image: jaegertracing/jaeger:2.10.0
+    container_name: radiosync-jaeger
+    restart: unless-stopped
+    ports:
+      - "${JAEGER_UI_BIND:-127.0.0.1}:16686:16686"
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: radiosync-prometheus

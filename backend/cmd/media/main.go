@@ -17,12 +17,14 @@ import (
 	"radio-backend/internal/queue"
 	"radio-backend/internal/security"
 	"radio-backend/internal/storage"
+	"radio-backend/internal/tracing"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	defer tracing.Setup("radiosync-media")()
 	_ = godotenv.Load()
 
 	if warning, err := auth.CheckSecret(); err != nil {

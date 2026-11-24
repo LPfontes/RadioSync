@@ -53,6 +53,7 @@ docker compose up -d --build
 | **MinIO Console** | http://localhost:9001 |
 | **Prometheus** | http://localhost:9090 |
 | **Grafana** | http://localhost:3000 |
+| **Jaeger** (traces) | http://localhost:16686 |
 
 ---
 
@@ -200,6 +201,8 @@ go test -v -race ./...
 | `S3_ACCESS_KEY` / `S3_SECRET_KEY` | `radiosync` / `radiosync123` | Credenciais de acesso ao MinIO. |
 | `AUDIO_DELIVERY_MODE` | `proxy` | Modo de entrega em `/musicas/{filename}`: `proxy` (stream direto do MinIO) ou `presigned` (redirect `302` para URL pré-assinada). |
 | `REDIS_URL` | `redis://redis:6379/0` | Endereço do Redis para estado quente, lock de DJ e Pub/Sub. |
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | `http://jaeger:4318` (no Compose) | Destino dos traces (OpenTelemetry). **Vazio desliga o tracing.** Ver ADR-0009. |
+| `OTEL_TRACES_SAMPLER_ARG` | _(1.0)_ | Fração de traces amostrados, com `OTEL_TRACES_SAMPLER=parentbased_traceidratio`. |
 | `AMQP_URL` | `amqp://radiosync:...@rabbitmq:5672/` | Endereço do RabbitMQ para fila de transcodificação de mídia. |
 | `MEDIA_RETRY_DELAYS` | `5s,30s,2m` | Atrasos entre as novas tentativas de um job; depois da última, DLQ. Use o mesmo valor na Media API e no worker. |
 | `MEDIA_JOB_TIMEOUT` | `10m` | Tempo máximo de uma conversão ou download. |

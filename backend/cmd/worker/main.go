@@ -18,12 +18,14 @@ import (
 	"radio-backend/internal/queue"
 	"radio-backend/internal/storage"
 	"radio-backend/internal/syncservice"
+	"radio-backend/internal/tracing"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	defer tracing.Setup("radiosync-worker")()
 	_ = godotenv.Load()
 
 	instanceID := os.Getenv("HOSTNAME")

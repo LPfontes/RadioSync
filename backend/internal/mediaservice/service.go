@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 	"log"
 	"mime/multipart"
 	"net/http"
@@ -24,6 +25,7 @@ import (
 	"radio-backend/internal/queue"
 	"radio-backend/internal/security"
 	"radio-backend/internal/storage"
+	"radio-backend/internal/tracing"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -66,6 +68,7 @@ func (s *Service) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(tracing.HTTPMiddleware("radiosync-media"))
 	r.Use(metrics.HTTPMiddleware("media"))
 	r.Use(chimw.Recoverer)
 	r.Use(security.CORS(s.cfg.AllowedOrigins))
@@ -258,7 +261,17 @@ func (s *Service) enqueue(w http.ResponseWriter, r *http.Request, job queue.Job)
 		log.Printf("[media] salvar o andamento do job %s: %v", job.ID, err)
 	}
 
-	if err := s.cfg.Queue.Publish(r.Context(), job); err != nil {
+	ctx, span := tracing.StartProducer(r.Context(), "queue.publish "+queue.TranscodeQueue,
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("messaging.destination.name", queue.TranscodeQueue),
+		attribute.String("radiosync.job.id", job.ID),
+		attribute.String("radiosync.job.kind", string(job.Kind)),
+		attribute.String("radiosync.station.id", job.StationID))
+	defer span.End()
+	job.Trace = tracing.Inject(ctx) // o worker continua este trace
+
+	if err := s.cfg.Queue.Publish(ctx, job); err != nil {
+		tracing.Fail(span, err)
 		log.Printf("[media] publicar job %s: %v", job.ID, err)
 		metrics.MediaJobsEnqueued.WithLabelValues(string(job.Kind), "error").Inc()
 		// O original fica: sem confirmação, o broker pode ter recebido o job

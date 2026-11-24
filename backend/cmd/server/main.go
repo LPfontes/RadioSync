@@ -12,6 +12,7 @@ import (
 	"radio-backend/internal/handler"
 	"radio-backend/internal/metrics"
 	"radio-backend/internal/security"
+	"radio-backend/internal/tracing"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -19,6 +20,7 @@ import (
 )
 
 func main() {
+	defer tracing.Setup("radiosync-server")()
 	godotenv.Load()
 
 	// Sem segredo forte não há como confiar nos tokens de DJ (ADR-0005).
@@ -36,6 +38,7 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(tracing.HTTPMiddleware("radiosync-server"))
 	r.Use(metrics.HTTPMiddleware("server"))
 	r.Use(chimw.Recoverer)
 
