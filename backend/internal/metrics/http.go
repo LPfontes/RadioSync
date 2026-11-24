@@ -1,6 +1,8 @@
 package metrics
 
 import (
+	"bufio"
+	"net"
 	"net/http"
 	"strconv"
 	"strings"
@@ -73,9 +75,25 @@ func HTTPMiddleware(service string) func(http.Handler) http.Handler {
 			// Conta só o handshake e deixa a duração de fora. As conexões
 			// abertas já têm métrica própria (radiosync_sync_active_connections).
 			if isWebSocketUpgrade(r) {
-				ww := chimw.NewWrapResponseWriter(w, r.ProtoMajor)
-				next.ServeHTTP(ww, r)
-				HTTPRequestsTotal.WithLabelValues(service, r.Method, routePattern(r), statusLabel(ww.Status())).Inc()
+				// Depois do Hijack o handler fica preso na conexão até ela
+				// fechar, e o Status() do wrapper continua 0. Por isso o
+				// handshake é contado NO MOMENTO do Hijack, como 101, e não
+				// quando o handler retorna (o que só ocorre ao fechar e
+				// mostraria o tráfego no fim da conexão, com código 200).
+				hw := &hijackCounter{ResponseWriter: w}
+				hw.onHijack = func() {
+					hw.hijacked = true
+					HTTPRequestsTotal.WithLabelValues(service, r.Method, routePattern(r), "101").Inc()
+				}
+				next.ServeHTTP(hw, r)
+				if !hw.hijacked {
+					// upgrade recusado (origem inválida etc.): vale o status real
+					codigo := hw.status
+					if codigo == 0 {
+						codigo = http.StatusOK
+					}
+					HTTPRequestsTotal.WithLabelValues(service, r.Method, routePattern(r), strconv.Itoa(codigo)).Inc()
+				}
 				return
 			}
 
@@ -119,4 +137,37 @@ func statusLabel(status int) string {
 
 func isWebSocketUpgrade(r *http.Request) bool {
 	return strings.EqualFold(r.Header.Get("Upgrade"), "websocket")
+}
+
+// hijackCounter avisa quando o handler toma a conexão (upgrade de WebSocket) e
+// guarda o status escrito quando não toma. Implementa Hijacker e Flusher, que é
+// o que o gorilla/websocket usa.
+type hijackCounter struct {
+	http.ResponseWriter
+	onHijack func()
+	hijacked bool
+	status   int
+}
+
+func (h *hijackCounter) WriteHeader(code int) {
+	h.status = code
+	h.ResponseWriter.WriteHeader(code)
+}
+
+func (h *hijackCounter) Hijack() (net.Conn, *bufio.ReadWriter, error) {
+	hj, ok := h.ResponseWriter.(http.Hijacker)
+	if !ok {
+		return nil, nil, http.ErrNotSupported
+	}
+	conn, rw, err := hj.Hijack()
+	if err == nil {
+		h.onHijack()
+	}
+	return conn, rw, err
+}
+
+func (h *hijackCounter) Flush() {
+	if f, ok := h.ResponseWriter.(http.Flusher); ok {
+		f.Flush()
+	}
 }
