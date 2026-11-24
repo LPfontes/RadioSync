@@ -38,3 +38,19 @@ sonda_espera() {
 
 # Dá a falha no meio da sonda: espera N s depois do início.
 espera() { sleep "$1"; }
+
+# Cria uma estação pelo gateway e define ID e TOK. O gateway limita a criação
+# (ADR-0005: 10 por minuto), então espera e tenta de novo se vier 429.
+cria_estacao() {
+  local base="${GATEWAY_LOCAL:-http://localhost}" r
+  for _ in $(seq 1 12); do
+    r=$(curl -s -X POST "$base/api/v1/stations" -H 'Content-Type: application/json' -d '{}' || true)
+    if ID=$(echo "$r" | python3 -c "import sys,json;print(json.load(sys.stdin)['stationId'])" 2>/dev/null); then
+      TOK=$(echo "$r" | python3 -c "import sys,json;print(json.load(sys.stdin)['djToken'])")
+      return 0
+    fi
+    sleep 10
+  done
+  echo "não foi possível criar a estação (limite do gateway?)" >&2
+  return 1
+}

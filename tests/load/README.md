@@ -38,7 +38,7 @@ que ele **não** falhou.
 - **LOAD-05** define o desvio como `|posição do servidor + RTT/2 − posição
   esperada pelo estado do DJ|`. A diferença entre dois clientes quaisquer é no
   máximo o dobro disso; p95 < 500 ms implica < 1 s entre pares.
-- **LOAD-03** usa `frontend/public/sounds/alarm.mp3` como arquivo de upload.
+- **LOAD-03** usa `frontend/public/sounds/alarm.mp3` como arquivo de upload. Pelo gateway, 20 uploads de um mesmo IP batem no limite de taxa (6 por minuto) e quase todos recebem `429`; para medir o efeito da **fila** sobre o WebSocket, mande direto à Media API: `tests/load/run.sh load-03 -e UPLOAD_BASE_URL=http://media:8084`.
 - `WS_BASE_URL=ws://sync:8082` aponta o WebSocket direto para o Sync Service,
   sem passar pelo gateway (útil para isolar o gateway como gargalo).
 
@@ -48,3 +48,19 @@ que ele **não** falhou.
   latência medida pode ser do próprio k6 disputando CPU com os servidores.
 - O monólito e o Sync Service compartilham o `JWT_SECRET`; sem ele os tokens de
   DJ do `setup()` não serão aceitos.
+
+
+## Capturas do Grafana
+
+```bash
+tests/load/captura-grafana.sh docs/img/resultados/x.png "2026-11-24 01:23:50" "2026-11-24 01:27:05"
+```
+
+Usa o Chrome em modo headless (sem plugin de renderização) e o Grafana da stack
+isolada (porta 13000, acesso anônimo de leitura). Termine a janela um pouco
+antes do fim do teste, senão os indicadores do topo mostram 0 conexões.
+
+## Cuidados
+
+- **No macOS, rode sob `caffeinate`** (`caffeinate -dimsu tests/load/run.sh load-01`). O repouso do sistema congela os timers do k6: um LOAD-01 de 3 minutos virou 32 minutos com 43% de erros e precisou ser descartado.
+- Os arquivos de `tests/load/results/` podem conter tokens de DJ; por isso o diretório está no `.gitignore`.
