@@ -27,6 +27,9 @@ func adminRouter() http.Handler {
 			r.Get("/stations", GetAdminStations)
 			r.Post("/stations/{stationId}/dj-token", IssueDJTokenAdmin)
 			r.Delete("/stations/{stationId}", DeleteStationAdmin)
+			r.Post("/purge-orphans", PurgeOrphanTracksAdmin)
+			r.Delete("/stations/{stationId}/tracks/{trackId}", RemoveTrackFromStationAdmin)
+			r.Put("/tracks/{trackId}", RenameTrackAdmin)
 		})
 	})
 	return r
@@ -83,6 +86,9 @@ var rotasProtegidas = []struct{ method, path string }{
 	{http.MethodGet, "/api/v1/admin/stations"},
 	{http.MethodPost, "/api/v1/admin/stations/" + testStationID + "/dj-token"},
 	{http.MethodDelete, "/api/v1/admin/stations/" + testStationID},
+	{http.MethodPost, "/api/v1/admin/purge-orphans"},
+	{http.MethodDelete, "/api/v1/admin/stations/" + testStationID + "/tracks/t1"},
+	{http.MethodPut, "/api/v1/admin/tracks/t1"},
 	{http.MethodGet, "/api/v1/debug"},
 }
 
