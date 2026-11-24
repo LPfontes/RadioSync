@@ -2,6 +2,7 @@ package queue
 
 import (
 	"context"
+	"encoding/json"
 	"os"
 	"reflect"
 	"strings"
@@ -274,5 +275,39 @@ func TestRabbit_ForaDoArFalhaComErrUnavailable(t *testing.T) {
 	}
 	if r.Connected() {
 		t.Fatal("não deveria constar como conectado")
+	}
+}
+
+// O contexto do trace viaja no corpo do Job (e não em cabeçalho AMQP) para
+// sobreviver a retry e DLQ, que republicam o Job.
+func TestJob_TraceViajaNoJSONESomeQuandoVazio(t *testing.T) {
+	semTrace, err := json.Marshal(Job{ID: "j1", Kind: KindUpload, StationID: "S"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(semTrace), `"trace"`) {
+		t.Fatalf("Job sem trace não deveria ter o campo no JSON: %s", semTrace)
+	}
+
+	com := Job{ID: "j1", Kind: KindUpload, StationID: "S", Trace: map[string]string{"traceparent": "00-aaaa-bbbb-01"}}
+	raw, err := json.Marshal(com)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var volta Job
+	if err := json.Unmarshal(raw, &volta); err != nil {
+		t.Fatal(err)
+	}
+	if volta.Trace["traceparent"] != "00-aaaa-bbbb-01" {
+		t.Fatalf("o trace se perdeu na ida e volta pelo JSON: %+v", volta.Trace)
+	}
+
+	// mensagem antiga, publicada antes de existir o campo, continua válida
+	var antigo Job
+	if err := json.Unmarshal([]byte(`{"jobId":"j0","kind":"upload","stationId":"S","sourceKey":"k"}`), &antigo); err != nil {
+		t.Fatal(err)
+	}
+	if antigo.Trace != nil {
+		t.Fatalf("job antigo deveria ter Trace nil, veio %v", antigo.Trace)
 	}
 }

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 	"io"
 	"log"
 	"sync"
@@ -11,6 +12,7 @@ import (
 
 	"radio-backend/internal/metrics"
 	"radio-backend/internal/model"
+	"radio-backend/internal/tracing"
 
 	"github.com/redis/go-redis/v9"
 )
@@ -22,6 +24,10 @@ type RedisEvent struct {
 	Type      string          `json:"type"`
 	Payload   json.RawMessage `json:"payload,omitempty"`
 	SentAt    int64           `json:"sentAt"`
+
+	// Trace leva o traceparent do comando do DJ até as outras réplicas, para o
+	// fan-out aparecer no mesmo trace.
+	Trace map[string]string `json:"trace,omitempty"`
 }
 
 // SyncStorage define as operações necessárias para fan-out, estado quente e lock de DJ.
@@ -88,13 +94,23 @@ func (s *RedisSyncStorage) PublishEvent(ctx context.Context, stationID string, e
 		event.SentAt = time.Now().UnixMilli()
 	}
 
+	ctx, span := tracing.StartProducer(ctx, "redis.publish "+event.Type,
+		attribute.String("messaging.system", "redis"),
+		attribute.String("radiosync.station.id", stationID),
+		attribute.String("radiosync.event.type", event.Type))
+	defer span.End()
+	event.Trace = tracing.Inject(ctx)
+
 	data, err := json.Marshal(event)
 	if err != nil {
+		tracing.Fail(span, err)
 		return fmt.Errorf("erro serializar evento Redis: %w", err)
 	}
 
 	channel := s.channelName(stationID)
-	return s.client.Publish(ctx, channel, data).Err()
+	err = s.client.Publish(ctx, channel, data).Err()
+	tracing.Fail(span, err)
+	return err
 }
 
 type subscriptionCloser struct {
@@ -158,7 +174,13 @@ func (s *RedisSyncStorage) SubscribeEvents(ctx context.Context, stationID string
 					}
 				}
 
+				// A réplica que recebe fica no trace do comando do DJ.
+				_, span := tracing.StartConsumer(context.Background(), "redis.fanout "+ev.Type, ev.Trace,
+					attribute.String("messaging.system", "redis"),
+					attribute.String("radiosync.station.id", ev.StationID),
+					attribute.String("radiosync.event.type", ev.Type))
 				onMessage(&ev)
+				span.End()
 			}
 
 			select {

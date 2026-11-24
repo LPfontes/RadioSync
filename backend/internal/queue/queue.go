@@ -48,6 +48,11 @@ type Job struct {
 	// Attempt é o número de novas tentativas já feitas (0 na primeira vez).
 	Attempt    int   `json:"attempt"`
 	EnqueuedAt int64 `json:"enqueuedAt"`
+
+	// Trace leva o contexto do trace (traceparent) do produtor até o worker. Vai
+	// no corpo, e não em cabeçalho AMQP, para sobreviver a retry e DLQ, que
+	// republicam o Job, e para funcionar igual com a fila em memória.
+	Trace map[string]string `json:"trace,omitempty"`
 }
 
 // Validate recusa mensagens que nenhuma nova tentativa faria funcionar.

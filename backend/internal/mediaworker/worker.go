@@ -7,6 +7,8 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
 	"io"
 	"log"
 	"os"
@@ -21,6 +23,7 @@ import (
 	"radio-backend/internal/queue"
 	"radio-backend/internal/storage"
 	"radio-backend/internal/syncservice"
+	"radio-backend/internal/tracing"
 )
 
 // Transcoder converte um arquivo para Opus e devolve a duração em segundos.
@@ -157,7 +160,22 @@ func (w *Worker) handle(ctx context.Context, d *queue.Delivery) {
 	metrics.MediaJobsInProgress.Inc()
 	defer metrics.MediaJobsInProgress.Dec()
 
+	// Continua o trace da requisição que enfileirou o job (mesmo depois de retry).
+	ctx, span := tracing.StartConsumer(ctx, "media.job "+string(job.Kind), job.Trace,
+		attribute.String("messaging.system", "rabbitmq"),
+		attribute.String("radiosync.job.id", job.ID),
+		attribute.String("radiosync.job.kind", string(job.Kind)),
+		attribute.String("radiosync.station.id", job.StationID),
+		attribute.Int("radiosync.job.attempt", job.Attempt+1),
+		attribute.Bool("messaging.redelivered", d.Redelivered),
+		attribute.String("radiosync.worker.id", w.cfg.ID))
+	defer span.End()
+
 	result := w.handleJob(ctx, d)
+	span.SetAttributes(attribute.String("radiosync.job.result", result))
+	if result == "retry" || result == "dead" {
+		span.SetStatus(codes.Error, result)
+	}
 	metrics.MediaAttempt(string(job.Kind), result, time.Since(start))
 	log.Printf("[worker %s] job %s (%s) estação %s tentativa %d: %s em %v",
 		w.cfg.ID, job.ID, job.Kind, job.StationID, job.Attempt+1, result, time.Since(start).Round(time.Millisecond))
@@ -241,6 +259,8 @@ func (w *Worker) keepLock(ctx context.Context, lock jobs.Lock) (context.Context,
 // ---------------------------------------------------------------- processamento
 
 func (w *Worker) process(ctx context.Context, job queue.Job) (track model.Track, cached bool, err error) {
+	ctx, span := tracing.Start(ctx, "media.process "+string(job.Kind))
+	defer func() { tracing.Fail(span, err); span.End() }()
 	// Antes de gastar CPU: a estação ainda existe?
 	if _, err := w.cfg.Repo.GetStation(ctx, job.StationID); err != nil {
 		return model.Track{}, false, stationError(err)

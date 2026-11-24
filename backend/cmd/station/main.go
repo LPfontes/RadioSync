@@ -16,12 +16,14 @@ import (
 	"radio-backend/internal/stationservice"
 	"radio-backend/internal/storage"
 	"radio-backend/internal/syncservice"
+	"radio-backend/internal/tracing"
 
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 )
 
 func main() {
+	defer tracing.Setup("radiosync-station")()
 	_ = godotenv.Load()
 
 	if warning, err := auth.CheckSecret(); err != nil {

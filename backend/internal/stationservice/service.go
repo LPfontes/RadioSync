@@ -19,6 +19,7 @@ import (
 	"radio-backend/internal/security"
 	"radio-backend/internal/storage"
 	"radio-backend/internal/syncservice"
+	"radio-backend/internal/tracing"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -89,6 +90,7 @@ func (s *Service) Router() http.Handler {
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
 	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(tracing.HTTPMiddleware("radiosync-station"))
 	r.Use(metrics.HTTPMiddleware("station"))
 	r.Use(chimw.Recoverer)
 	r.Use(security.CORS(s.allowedOrigins))
