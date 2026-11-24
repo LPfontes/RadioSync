@@ -9,7 +9,7 @@
 #   export COMPOSE_NETWORK=iso_default GATEWAY_LOCAL=http://localhost:18080
 #   tests/load/run.sh load-04
 #
-# Portas do host: gateway 18080, Prometheus 19090, Grafana 13000, Jaeger 16686.
+# Portas do host: gateway 18080, Prometheus 19090, Grafana 13000, Jaeger 16687.
 set -euo pipefail
 cd "$(dirname "$0")/../.."
 

@@ -13,7 +13,7 @@ tests/stack-isolada/down.sh     # derruba e apaga os volumes dela
 ```
 
 Portas no host: gateway **18080**, Prometheus **19090**, Grafana **13000**
-(acesso anônimo de leitura), Jaeger **16686**. O resto só existe dentro da rede
+(acesso anônimo de leitura), Jaeger **16687** (a porta 16686 fica livre para o Jaeger da stack normal). O resto só existe dentro da rede
 `iso_default`.
 
 Para rodar os testes contra ela, aponte os scripts para o projeto isolado:
