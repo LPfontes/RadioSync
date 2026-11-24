@@ -1,6 +1,9 @@
 package media
 
-import "testing"
+import (
+	"context"
+	"testing"
+)
 
 func TestIsSupported(t *testing.T) {
 	aceitos := []string{".mp3", ".MP3", ".wav", ".ogg", ".flac", ".aac", ".m4a"}
@@ -18,7 +21,7 @@ func TestIsSupported(t *testing.T) {
 }
 
 func TestConvertToOpus_FormatoInvalido(t *testing.T) {
-	if err := ConvertToOpus("arquivo.exe", "saida.opus"); err == nil {
+	if err := ConvertToOpus(context.Background(), "arquivo.exe", "saida.opus"); err == nil {
 		t.Fatal("esperado erro para formato não suportado")
 	}
 }

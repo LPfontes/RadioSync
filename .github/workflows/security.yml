@@ -114,8 +114,19 @@ jobs:
           category: gosec
 
   container:
-    name: Imagem (Trivy + SBOM)
+    name: Imagem ${{ matrix.image }} (Trivy + SBOM)
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # O FFmpeg e o yt-dlp só existem na imagem do worker (ADR-0002)
+        include:
+          - image: radiosync
+            dockerfile: Dockerfile
+          - image: media
+            dockerfile: Dockerfile.media
+          - image: worker
+            dockerfile: Dockerfile.worker
     permissions:
       contents: read
       security-events: write
@@ -127,17 +138,18 @@ jobs:
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         with:
           context: .
+          file: ${{ matrix.dockerfile }}
           load: true
           push: false
           tags: radiosync:scan
-          cache-from: type=gha,scope=security
-          cache-to: type=gha,mode=max,scope=security
+          cache-from: type=gha,scope=security-${{ matrix.image }}
+          cache-to: type=gha,mode=max,scope=security-${{ matrix.image }}
 
       - name: Cache do banco de vulnerabilidades do Trivy
         uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/trivy
-          key: trivy-db-${{ github.run_id }}
+          key: trivy-db-${{ github.run_id }}-${{ matrix.image }}
           restore-keys: trivy-db-
 
       - name: Trivy imagem -> Code scanning
@@ -149,6 +161,7 @@ jobs:
             "$TRIVY_IMAGE" image --scanners vuln --format sarif -o /out/trivy-image.sarif radiosync:scan
 
       - name: Trivy config (Dockerfile e compose) -> Code scanning
+        if: matrix.image == 'radiosync'
         run: |
           docker run --rm -v ~/.cache/trivy:/root/.cache -v "$PWD:/repo" \
             "$TRIVY_IMAGE" config --format sarif -o /repo/trivy-config.sarif /repo
@@ -158,7 +171,7 @@ jobs:
         uses: github/codeql-action/upload-sarif@1bd86f2fdb4b86187fa4059f16f31a3202acc9ea # v4.39.4
         with:
           sarif_file: trivy-image.sarif
-          category: trivy-image
+          category: ${{ matrix.image == 'radiosync' && 'trivy-image' || format('trivy-image-{0}', matrix.image) }}
 
       - name: Enviar Trivy config para o Code scanning
         if: always() && hashFiles('trivy-config.sarif') != ''
@@ -174,7 +187,7 @@ jobs:
 
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
-          name: sbom-spdx
+          name: sbom-spdx-${{ matrix.image }}
           path: sbom.spdx.json
           retention-days: 30
 

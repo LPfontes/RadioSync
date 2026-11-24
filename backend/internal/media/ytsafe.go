@@ -3,6 +3,7 @@ package media
 import (
 	"errors"
 	"net/url"
+	"regexp"
 	"strings"
 )
 
@@ -42,6 +43,37 @@ func ValidateYouTubeURL(raw string) (string, error) {
 		return "", ErrInvalidYouTubeURL
 	}
 	return u.String(), nil
+}
+
+var videoIDPattern = regexp.MustCompile(`^[A-Za-z0-9_-]{11}$`)
+
+// YouTubeID extrai o ID do vídeo de uma URL do YouTube, ou "" se não houver
+// (playlist, canal, outro site). O ID identifica o vídeo no cache.
+func YouTubeID(raw string) string {
+	u, err := url.Parse(strings.TrimSpace(raw))
+	if err != nil || !youtubeHosts[strings.ToLower(u.Hostname())] {
+		return ""
+	}
+	parts := strings.Split(strings.Trim(u.Path, "/"), "/")
+	id := u.Query().Get("v")
+	switch {
+	case strings.HasSuffix(strings.ToLower(u.Hostname()), "youtu.be"):
+		id = parts[0]
+	case id == "" && len(parts) >= 2:
+		switch parts[0] {
+		case "shorts", "embed", "v", "live":
+			id = parts[1]
+		}
+	}
+	if !videoIDPattern.MatchString(id) {
+		return ""
+	}
+	return id
+}
+
+// WatchURL devolve a URL canônica de um vídeo, sem playlist nem parâmetros.
+func WatchURL(videoID string) string {
+	return "https://www.youtube.com/watch?v=" + videoID
 }
 
 // appendURL termina a lista de opções do yt-dlp com "--" e só então a URL,

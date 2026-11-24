@@ -1,0 +1,14 @@
+apiVersion: 1
+
+# Dashboards como código: todo JSON em infra/grafana/dashboards entra no Grafana
+# ao subir. A pasta é somente leitura no container; para mudar um painel, edite
+# o JSON (ou exporte do Grafana) e faça commit.
+providers:
+  - name: radiosync
+    folder: RadioSync
+    type: file
+    disableDeletion: false
+    allowUiUpdates: false
+    updateIntervalSeconds: 30
+    options:
+      path: /var/lib/grafana/dashboards

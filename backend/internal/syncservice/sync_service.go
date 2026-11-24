@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"go.opentelemetry.io/otel/attribute"
 	"log"
 	"net/http"
 	"strings"
@@ -12,9 +13,11 @@ import (
 
 	"radio-backend/internal/auth"
 	"radio-backend/internal/handler"
+	"radio-backend/internal/jobs"
 	"radio-backend/internal/metrics"
 	"radio-backend/internal/model"
 	"radio-backend/internal/security"
+	"radio-backend/internal/tracing"
 	"radio-backend/internal/ws"
 
 	"github.com/go-chi/chi/v5"
@@ -233,6 +236,9 @@ func (s *SyncService) handleRemoteEvent(hub *SyncHub, ev *RedisEvent) {
 			})
 		}
 	case "DJ_STATUS":
+		hub.Broadcast <- ev.Payload
+	case jobs.EventTrackReady, jobs.EventTrackFailed:
+		// Vêm do Media Worker já no formato da mensagem WebSocket (ADR-0002).
 		hub.Broadcast <- ev.Payload
 	case "PLAYLIST_UPDATED":
 		var pl []model.Track
@@ -488,6 +494,14 @@ func (s *SyncService) handleClientMessage(hub *SyncHub, client *ws.Client, msg [
 		return
 	}
 
+	// Cada comando do DJ é um trace: o fan-out para as outras réplicas fica
+	// pendurado nele (o contexto viaja no evento do Redis).
+	ctx, span := tracing.Start(s.ctx, "ws.command "+incoming.Type,
+		attribute.String("radiosync.station.id", hub.StationID),
+		attribute.String("radiosync.command", incoming.Type),
+		attribute.String("radiosync.instance", s.instanceID))
+	defer span.End()
+
 	hub.Lock()
 	defer hub.Unlock()
 
@@ -565,13 +579,13 @@ func (s *SyncService) handleClientMessage(hub *SyncHub, client *ws.Client, msg [
 	}
 
 	if publishState {
-		_ = s.storage.SavePlaybackState(s.ctx, hub.StationID, hub.State)
+		_ = s.storage.SavePlaybackState(ctx, hub.StationID, hub.State)
 		statePayload, _ := json.Marshal(hub.State)
 		hub.BroadcastJSON(model.StateUpdateMsg{
 			Type:  "STATE_UPDATE",
 			State: hub.State,
 		})
-		_ = s.storage.PublishEvent(s.ctx, hub.StationID, &RedisEvent{
+		_ = s.storage.PublishEvent(ctx, hub.StationID, &RedisEvent{
 			SenderID:  s.instanceID,
 			StationID: hub.StationID,
 			Type:      "STATE_UPDATE",
@@ -585,7 +599,7 @@ func (s *SyncService) handleClientMessage(hub *SyncHub, client *ws.Client, msg [
 			Type:     "PLAYLIST_UPDATED",
 			Playlist: hub.Playlist,
 		})
-		_ = s.storage.PublishEvent(s.ctx, hub.StationID, &RedisEvent{
+		_ = s.storage.PublishEvent(ctx, hub.StationID, &RedisEvent{
 			SenderID:  s.instanceID,
 			StationID: hub.StationID,
 			Type:      "PLAYLIST_UPDATED",
@@ -599,7 +613,7 @@ func (s *SyncService) handleClientMessage(hub *SyncHub, client *ws.Client, msg [
 			Type:     "MIXER_UPDATED",
 			Channels: hub.Mixer,
 		})
-		_ = s.storage.PublishEvent(s.ctx, hub.StationID, &RedisEvent{
+		_ = s.storage.PublishEvent(ctx, hub.StationID, &RedisEvent{
 			SenderID:  s.instanceID,
 			StationID: hub.StationID,
 			Type:      "MIXER_UPDATED",

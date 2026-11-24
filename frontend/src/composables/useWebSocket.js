@@ -66,6 +66,15 @@ export function useWebSocket(onConnected) {
       case 'DJ_STATUS':
         store.hasDJOnline = !!msg.hasDJOnline
         break
+      case 'TRACK_READY':
+        store.applyJob({ jobId: msg.jobId, status: 'ready', track: msg.track })
+        break
+      case 'TRACK_FAILED':
+        // Só o DJ acompanha falhas: o ouvinte não tem lista de jobs
+        if (store.role === 'dj') {
+          store.applyJob({ jobId: msg.jobId, title: msg.title, status: 'failed', error: msg.error })
+        }
+        break
       case 'SYNC': {
         const t1 = Date.now()
         if (msg.serverTime && syncT0) {

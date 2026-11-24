@@ -48,6 +48,20 @@ func DatabaseURLFromEnv() string {
 // NewPostgresRepository abre o pool de conexões com o PostgreSQL, valida conectividade
 // e executa automaticamente as migrations versionadas embutidas em MigrationsFS.
 func NewPostgresRepository(ctx context.Context, databaseURL string) (*PostgresRepository, error) {
+	repo, err := OpenPostgresRepository(ctx, databaseURL)
+	if err != nil {
+		return nil, err
+	}
+	if err := RunMigrations(ctx, repo.db); err != nil {
+		_ = repo.db.Close()
+		return nil, err
+	}
+	return repo, nil
+}
+
+// OpenPostgresRepository conecta sem rodar migrations, para os serviços que
+// usam o schema mas não são donos dele (Media API e Media Worker).
+func OpenPostgresRepository(ctx context.Context, databaseURL string) (*PostgresRepository, error) {
 	if strings.TrimSpace(databaseURL) == "" {
 		databaseURL = DatabaseURLFromEnv()
 	}
@@ -64,11 +78,6 @@ func NewPostgresRepository(ctx context.Context, databaseURL string) (*PostgresRe
 	if err := db.PingContext(pingCtx); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("falha no ping do postgres: %w", err)
-	}
-
-	if err := RunMigrations(ctx, db); err != nil {
-		_ = db.Close()
-		return nil, err
 	}
 
 	return &PostgresRepository{db: db}, nil
@@ -490,7 +499,7 @@ func (r *PostgresRepository) AddTrackToStation(ctx context.Context, stationID st
 
 	_, err = tx.ExecContext(ctx, `
 		INSERT INTO station_tracks (station_id, track_id, position)
-		VALUES ($1, $2, COALESCE((SELECT MAX(position) + 1 FROM station_tracks WHERE station_id = $1), 0))
+		VALUES ($1::varchar, $2, COALESCE((SELECT MAX(position) + 1 FROM station_tracks WHERE station_id = $1::varchar), 0))
 		ON CONFLICT (station_id, track_id) DO NOTHING
 	`, stationID, t.ID)
 	if err != nil {

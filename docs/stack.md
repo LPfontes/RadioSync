@@ -34,5 +34,5 @@
 | RabbitMQ | `github.com/rabbitmq/amqp091-go` |
 | Postgres | `github.com/jackc/pgx/v5` |
 | MinIO / S3 | `github.com/minio/minio-go/v7` |
-| Circuit breaker | `github.com/sony/gobreaker/v2` |
+| Circuit breaker | implementação própria (`internal/breaker`, ADR-0002) |
 | Métricas | `github.com/prometheus/client_golang` |

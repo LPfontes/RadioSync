@@ -36,3 +36,9 @@ Thumbs.db
 
 # Senha do dashboard do Traefik (gerada por scripts/traefik-dashboard-password.sh)
 infra/traefik/dashboard.htpasswd
+
+# Resultados dos testes de carga e resiliência (os números que valem vão para docs/resultados-testes.md)
+tests/load/results/*
+!tests/load/results/.gitkeep
+tests/resilience/results/*
+!tests/resilience/results/.gitkeep

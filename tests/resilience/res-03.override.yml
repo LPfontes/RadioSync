@@ -1,0 +1,18 @@
+# Usado pelo res-03-ytdlp.sh: simula o YouTube inacessível de forma determinística
+# (sem depender da internet) e encurta os atrasos de retry para o teste durar minutos.
+# O Media API e o worker precisam do MESMO MEDIA_RETRY_DELAYS: ambos declaram a topologia.
+services:
+  media:
+    environment:
+      - MEDIA_RETRY_DELAYS=2s,4s,6s
+  media-worker:
+    environment:
+      - MEDIA_RETRY_DELAYS=2s,4s,6s
+      - YT_BREAKER_FAILURES=5
+      - YT_BREAKER_COOLDOWN=120s
+    extra_hosts:
+      - "www.youtube.com:127.0.0.1"
+      - "youtube.com:127.0.0.1"
+      - "m.youtube.com:127.0.0.1"
+      - "youtu.be:127.0.0.1"
+      - "img.youtube.com:127.0.0.1"

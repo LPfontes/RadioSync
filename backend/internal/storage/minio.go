@@ -176,12 +176,17 @@ func (s *MinIOObjectStore) Put(ctx context.Context, key string, r io.Reader, siz
 		contentType = "audio/ogg"
 	}
 
-	data, err := io.ReadAll(r)
-	if err != nil {
-		return fmt.Errorf("erro ao ler payload para upload no MinIO: %w", err)
+	// Com o tamanho conhecido o corpo é transmitido em streaming (a assinatura
+	// é UNSIGNED-PAYLOAD): um upload de 100 MB não ocupa 100 MB de memória.
+	if size <= 0 {
+		data, err := io.ReadAll(r)
+		if err != nil {
+			return fmt.Errorf("erro ao ler payload para upload no MinIO: %w", err)
+		}
+		r, size = bytes.NewReader(data), int64(len(data))
 	}
 
-	req, err := s.newSignedRequest(ctx, http.MethodPut, s.objectPath(key), nil, bytes.NewReader(data), int64(len(data)), contentType)
+	req, err := s.newSignedRequest(ctx, http.MethodPut, s.objectPath(key), nil, r, size, contentType)
 	if err != nil {
 		return err
 	}

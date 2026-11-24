@@ -2,7 +2,9 @@ package media
 
 import (
 	"bytes"
+	"context"
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"log"
 	"os"
@@ -11,41 +13,51 @@ import (
 	"strings"
 )
 
-func GetMusicDir() string {
-	dir := os.Getenv("MUSIC_DIR")
-	if dir == "" {
-		dir = "../musicas"
+// ErrVideoUnavailable indica um vídeo que nunca vai baixar (privado, removido):
+// tentar de novo não resolve e não é falha do YouTube.
+var ErrVideoUnavailable = errors.New("vídeo indisponível no YouTube")
+
+func isVideoUnavailable(stderr string) bool {
+	for _, s := range []string{
+		"Private video",
+		"This video is private",
+		"This video has been removed",
+		"account associated with this video has been terminated",
+		"Join this channel to get access",
+		"Incomplete YouTube ID",
+	} {
+		if strings.Contains(stderr, s) {
+			return true
+		}
 	}
-	abs, err := filepath.Abs(dir)
-	if err != nil {
-		return dir
-	}
-	return abs
+	return false
 }
 
-func getCookiesFile() string {
-	dir := os.Getenv("DATA_DIR")
-	if dir == "" {
-		dir = "./data"
+// copyCookies copia o cookies.txt para dir e devolve o caminho da cópia, ou ""
+// se não houver cookies. O yt-dlp regrava o arquivo ao terminar: cada download
+// usa a própria cópia, para que downloads em paralelo não corrompam o original.
+func copyCookies(dir string) string {
+	dataDir := os.Getenv("DATA_DIR")
+	if dataDir == "" {
+		dataDir = "./data"
 	}
-	_ = os.MkdirAll(dir, 0755)
-	cookiesPath := filepath.Join(dir, "cookies.txt")
-
-	// Checagem do arquivo físico no disco
-	if data, err := os.ReadFile(cookiesPath); err == nil && len(data) > 0 {
-		strContent := strings.TrimSpace(string(data))
-		// Se o arquivo no disco estiver em formato Base64, decodifica automaticamente para o formato Netscape
-		if strings.HasPrefix(strContent, "IyBOZXRzY2FwZ") {
-			decoded, err := base64.StdEncoding.DecodeString(strContent)
-			if err == nil && len(decoded) > 0 {
-				_ = os.WriteFile(cookiesPath, decoded, 0600)
-				_ = os.Chmod(cookiesPath, 0600)
-				return cookiesPath
-			}
+	data, err := os.ReadFile(filepath.Join(dataDir, "cookies.txt")) // #nosec G304 -- diretório da configuração
+	if err != nil || len(data) == 0 {
+		return ""
+	}
+	// Se o arquivo estiver em Base64, decodifica para o formato Netscape
+	content := strings.TrimSpace(string(data))
+	if strings.HasPrefix(content, "IyBOZXRzY2FwZ") {
+		if decoded, err := base64.StdEncoding.DecodeString(content); err == nil && len(decoded) > 0 {
+			data = decoded
 		}
-		return cookiesPath
 	}
-	return ""
+	path := filepath.Join(dir, "cookies.txt")
+	if err := os.WriteFile(path, data, 0600); err != nil {
+		log.Printf("[youtube] não foi possível copiar cookies.txt: %v", err)
+		return ""
+	}
+	return path
 }
 
 type downloadStrategy struct {
@@ -66,18 +78,23 @@ func cleanEnv() []string {
 	return env
 }
 
-func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error) {
+func DownloadYouTubeAudio(ctx context.Context, youtubeURL, outputPath string) (string, float64, error) {
 	// Barreira contra injeção de opções no yt-dlp (ver ytsafe.go).
 	youtubeURL, err := ValidateYouTubeURL(youtubeURL)
 	if err != nil {
 		return "", 0, err
 	}
 
-	cookiesPath := getCookiesFile()
+	cookiesDir, err := os.MkdirTemp("", "yt-cookies-")
+	if err != nil {
+		return "", 0, err
+	}
+	defer os.RemoveAll(cookiesDir)
+	cookiesPath := copyCookies(cookiesDir)
 	denoPath, denoErr := exec.LookPath("deno")
 	log.Printf("[youtube] PATH='%s'", os.Getenv("PATH"))
 	log.Printf("[youtube] denoPath='%s' (err=%v)", denoPath, denoErr)
-	log.Printf("[youtube] cookiesPath detectado: '%s' (DATA_DIR='%s')", cookiesPath, os.Getenv("DATA_DIR"))
+	log.Printf("[youtube] cookies=%v (DATA_DIR='%s')", cookiesPath != "", os.Getenv("DATA_DIR"))
 
 	// 1. Obter título do vídeo limpo
 	titleArgs := []string{
@@ -91,7 +108,7 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 	}
 	titleArgs = appendURL(titleArgs, youtubeURL)
 
-	titleCmd := exec.Command("yt-dlp", titleArgs...)
+	titleCmd := command(ctx, "yt-dlp", titleArgs...)
 	titleCmd.Env = cleanEnv()
 	titleOut, _ := titleCmd.Output()
 	title := strings.TrimSpace(string(titleOut))
@@ -150,16 +167,22 @@ func DownloadYouTubeAudio(youtubeURL, outputPath string) (string, float64, error
 		args = appendURL(args, youtubeURL)
 
 		log.Printf("[youtube] Tentando estratégia %d/%d (cookies=%v, clients='%s')", i+1, len(strategies), st.cookies != "", st.clients)
-		cmd := exec.Command("yt-dlp", args...)
+		cmd := command(ctx, "yt-dlp", args...)
 		cmd.Env = cleanEnv()
 		var stderr bytes.Buffer
 		cmd.Stderr = &stderr
 
 		if err := cmd.Run(); err == nil {
 			log.Printf("[youtube] Estratégia %d teve SUCESSO!", i+1)
-			duration, _ := GetDuration(outputPath)
+			duration, _ := GetDuration(ctx, outputPath)
 			return title, duration, nil
 		} else {
+			if ctx.Err() != nil {
+				return "", 0, ctx.Err()
+			}
+			if isVideoUnavailable(stderr.String()) {
+				return "", 0, fmt.Errorf("%w: %s", ErrVideoUnavailable, strings.TrimSpace(stderr.String()))
+			}
 			log.Printf("[youtube] Estratégia %d FALHOU: %v | stderr: %s", i+1, err, strings.TrimSpace(stderr.String()))
 			lastErr = fmt.Errorf("%v | log: %s", err, strings.TrimSpace(stderr.String()))
 		}

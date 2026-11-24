@@ -14,6 +14,7 @@ import (
 	"radio-backend/internal/metrics"
 	"radio-backend/internal/security"
 	"radio-backend/internal/syncservice"
+	"radio-backend/internal/tracing"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
@@ -22,6 +23,7 @@ import (
 )
 
 func main() {
+	defer tracing.Setup("radiosync-sync")()
 	godotenv.Load()
 
 	// Validação do JWT_SECRET para tokens de DJ (ADR-0005)
@@ -56,6 +58,9 @@ func main() {
 
 	r := chi.NewRouter()
 	r.Use(chimw.Logger)
+	// Antes do Recoverer: um panic recuperado como 500 entra na taxa de erro.
+	r.Use(tracing.HTTPMiddleware("radiosync-sync"))
+	r.Use(metrics.HTTPMiddleware("sync"))
 	r.Use(chimw.Recoverer)
 
 	// Métricas Prometheus (tarefa Membro 5 / observabilidade)

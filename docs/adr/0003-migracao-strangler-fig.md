@@ -42,7 +42,8 @@ A tabela abaixo consolida o estado atual de todas as rotas no API Gateway Traefi
 | 2 | `POST /api/v1/stations` e `POST /api/v1/stations/{id}/claim-dj` | `95` | **Station Service** (`backend/cmd/station`, `:8083`, escalável `--scale station=N`) | PostgreSQL 16 + Redis Lock (ADR-0006) | **Migrado** |
 | 3 | `GET/PUT /api/v1/stations/*` (estações, playlist, repositório, faixas) e `GET /api/v1/library` | `85` | **Station Service** (`backend/cmd/station`, `:8083`) | PostgreSQL 16 + MinIO (ADR-0006) | **Migrado** |
 | 4 | `GET /musicas/*` | `85` | **Station Service** → **MinIO** (`bucket: musicas`) | MinIO S3 ObjectStore (ADR-0006) | **Migrado** |
-| 5 | `POST /api/v1/stations/{id}/upload` e `/youtube` | `90` | **Media Service + Worker** (transição via fila RabbitMQ, ADR-0002) | RabbitMQ + MinIO + PostgreSQL | **Em integração (Frente 2)** |
+| 5 | `POST /api/v1/stations/{id}/upload` e `/youtube` | `90` | **Media API** (`backend/cmd/media`, `:8084`) → fila → **Media Worker** (`backend/cmd/worker`, ADR-0002) | RabbitMQ + MinIO + PostgreSQL | **Migrado** |
+| 5b | `GET /api/v1/stations/{id}/jobs*`, `/api/v1/stations/{id}/cookies*` e `POST /api/v1/admin/cookies` | `90` / `105` | **Media API** | Redis + volume `media-data` | **Migrado** |
 | 6 | `/api/v1/admin/*`, `/api/v1/debug` e `/*` (SPA Frontend) | `100` / `110` / default | **Monolito / Frontend** (`backend/cmd/server`, `:8080`) | PostgreSQL / Estáticos | **Mantido no servidor base** |
 
 ### Extração do Station Service (`backend/cmd/station`)

@@ -16,11 +16,6 @@ var (
 	activeRepo   storage.Repository = storage.NewMemoryRepository()
 )
 
-func init() {
-	model.TrackRegisterer = RegisterOrUpdateTrackMetadata
-	model.SaveStationsFunc = SaveStations
-}
-
 // SetRepository configura o repositório persistente (ex: PostgresRepository) usado pelos handlers.
 func SetRepository(repo storage.Repository) {
 	if repo == nil {

@@ -8,13 +8,15 @@ O documento da disciplina exige no mínimo 3 padrões da Seção 5 e ao menos
 | 1 | **Queues, PubSub e Messaging Fanout** | Escalabilidade | Redis Pub/Sub repassa eventos do DJ a todas as réplicas do Sync Service | Entrega 3 | 0001 |
 | 2 | **Stateless, Stateful e Imutabilidade** | Escalabilidade | Estado da estação sai da memória do processo e vai para Redis | Entrega 3 | 0001 |
 | 3 | **Load Balancing** | Escalabilidade | Traefik distribui conexões entre réplicas | Compose pronto | 0005 |
-| 4 | **Retry Pattern e DLQ** | Confiabilidade | Jobs de transcodificação: 3 tentativas com backoff → `media.transcode.dlq` | Entrega 3 | 0002 |
-| 5 | **Circuit Breaker** | Confiabilidade | Chamadas ao YouTube (yt-dlp) | Entrega 3 | 0002 |
+| 4 | **Retry Pattern e DLQ** | Confiabilidade | Jobs de transcodificação: 3 novas tentativas com backoff → `media.transcode.dlq` | Implementado | 0002 |
+| 5 | **Circuit Breaker** | Confiabilidade | Chamadas ao YouTube (yt-dlp) | Implementado | 0002 |
 | 6 | **Strangler Fig** | Confiabilidade | Extração gradual dos serviços do monolito via gateway | Em andamento | 0003 |
-| 7 | **SYNC vs ASYNC / Arquitetura orientada a eventos** | Desempenho | Upload responde `202` e a conversão ocorre de forma assíncrona; `TRACK_READY` como evento | Entrega 3 | 0002 |
+| 7 | **SYNC vs ASYNC / Arquitetura orientada a eventos** | Desempenho | Upload responde `202` e a conversão ocorre de forma assíncrona; `TRACK_READY` como evento | Implementado | 0002 |
 | 8 | **Polyglot Persistence / Database-per-service** | Desempenho | Redis (estado quente), Postgres (durável), MinIO (arquivos) | Entrega 3 | 0006 |
 | 9 | **API Gateway Pattern** (auth, rate limiting) | Segurança | Traefik na borda; rate limit já configurado | Compose pronto | 0005 |
 | 10 | **Rate Limit / Throttling** | Desempenho / Segurança | Limite por IP no gateway, mais rígido para upload e criação de salas | Parcial | 0005 |
+| 11 | **Bulkhead** | Confiabilidade | FFmpeg e yt-dlp só no Media Worker, com limite de CPU, memória e jobs por réplica | Implementado | 0002 |
+| 12 | **Idempotência** | Confiabilidade | Lock por job e por vídeo; um job reentregue não converte de novo | Implementado | 0002 |
 
 **Núcleo obrigatório (os 3 que vamos demonstrar com testes):**
 Messaging Fanout (1), Retry + DLQ (4) e Circuit Breaker (5).

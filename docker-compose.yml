@@ -39,6 +39,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-sync
       - PORT=8082
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
       - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
@@ -65,6 +68,9 @@ services:
     restart: unless-stopped
     stop_grace_period: 10s
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-station
       - PORT=8083
       - APP_VERSION=${IMAGE_TAG:-dev}
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -110,6 +116,117 @@ services:
       - traefik.http.routers.station-api.service=station
       - traefik.http.routers.station-api.middlewares=api-ratelimit
 
+  # Media API: extraída do monolito (Strangler Fig, ADR-0002, ADR-0003). Valida o
+  # upload/link, guarda o original no MinIO, publica em media.transcode e responde
+  # 202. Sem FFmpeg nem yt-dlp. Escala com: docker compose up -d --scale media=N
+  media:
+    build:
+      context: .
+      dockerfile: Dockerfile.media
+    image: ${RADIOSYNC_MEDIA_IMAGE:-lpfonts/radiosync-media}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 10s
+    environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-media
+      - PORT=8084
+      - APP_VERSION=${IMAGE_TAG:-dev}
+      - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
+      - JWT_SECRET=${JWT_SECRET:?defina JWT_SECRET no .env}
+      # Só para validar o token nas rotas de admin (cookies)
+      - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
+      - MEDIA_RETRY_DELAYS=${MEDIA_RETRY_DELAYS:-5s,30s,2m}
+      - MEDIA_MAX_UPLOAD_MB=100
+      - REDIS_URL=redis://redis:6379/0
+      - AMQP_URL=amqp://${RABBITMQ_USER:-radiosync}:${RABBITMQ_PASSWORD:-radiosync}@rabbitmq:5672/
+      - DATABASE_URL=postgres://${POSTGRES_USER:-radiosync}:${POSTGRES_PASSWORD:-radiosync}@postgres:5432/${POSTGRES_DB:-radiosync}?sslmode=disable
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=musicas
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-radiosync}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-radiosync123}
+      - DATA_DIR=/app/data
+    volumes:
+      # cookies.txt do YouTube, lido pelos workers
+      - media-data:/app/data
+    depends_on:
+      # O Station Service é dono do schema: as migrations rodam nele
+      station:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+      minio:
+        condition: service_started
+    labels:
+      - traefik.enable=true
+      - traefik.http.services.media.loadbalancer.server.port=8084
+      # Upload e YouTube: cada pedido vira um job de CPU pesada no worker. 6/min
+      # (burst 3), no máximo 2 em andamento por IP e corpo até 100 MB (acima, 413)
+      - traefik.http.routers.media.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/(upload|youtube)$`)
+      - traefik.http.routers.media.entrypoints=web
+      - traefik.http.routers.media.priority=90
+      - traefik.http.routers.media.service=media
+      - traefik.http.routers.media.middlewares=media-ratelimit,media-inflight,media-bodylimit
+      - traefik.http.middlewares.media-ratelimit.ratelimit.average=6
+      - traefik.http.middlewares.media-ratelimit.ratelimit.period=1m
+      - traefik.http.middlewares.media-ratelimit.ratelimit.burst=3
+      - traefik.http.middlewares.media-inflight.inflightreq.amount=2
+      - traefik.http.middlewares.media-inflight.inflightreq.sourcecriterion.ipstrategy.depth=0
+      - traefik.http.middlewares.media-bodylimit.buffering.maxRequestBodyBytes=104857600
+      # Andamento dos jobs e cookies do YouTube
+      - traefik.http.routers.media-jobs.rule=PathRegexp(`^/api/v1/stations/[^/]+/(jobs(/[^/]+)?|cookies(/status)?)$`)
+      - traefik.http.routers.media-jobs.entrypoints=web
+      - traefik.http.routers.media-jobs.priority=90
+      - traefik.http.routers.media-jobs.service=media
+      - traefik.http.routers.media-jobs.middlewares=api-ratelimit
+      - traefik.http.routers.media-admin-cookies.rule=Path(`/api/v1/admin/cookies`)
+      - traefik.http.routers.media-admin-cookies.entrypoints=web
+      - traefik.http.routers.media-admin-cookies.priority=105
+      - traefik.http.routers.media-admin-cookies.service=media
+      - traefik.http.routers.media-admin-cookies.middlewares=api-ratelimit,admin-auth
+
+  # Media Worker: única imagem com FFmpeg e yt-dlp (bulkhead, ADR-0002). Consome
+  # media.transcode com ack manual. Escala com: docker compose up -d --scale media-worker=N
+  media-worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.worker
+    image: ${RADIOSYNC_WORKER_IMAGE:-lpfonts/radiosync-worker}:${IMAGE_TAG:-latest}
+    restart: unless-stopped
+    stop_grace_period: 20s
+    # Limite por réplica: a conversão não toma a CPU da API e do WebSocket
+    cpus: ${WORKER_CPUS:-1.5}
+    mem_limit: ${WORKER_MEMORY:-1g}
+    environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-worker
+      - PORT=8085
+      - WORKER_CONCURRENCY=${WORKER_CONCURRENCY:-2}
+      - MEDIA_JOB_TIMEOUT=${MEDIA_JOB_TIMEOUT:-10m}
+      - MEDIA_RETRY_DELAYS=${MEDIA_RETRY_DELAYS:-5s,30s,2m}
+      - YT_BREAKER_FAILURES=${YT_BREAKER_FAILURES:-5}
+      - YT_BREAKER_COOLDOWN=${YT_BREAKER_COOLDOWN:-60s}
+      - POT_PROVIDER_URL=http://bgutil-provider:4416
+      - REDIS_URL=redis://redis:6379/0
+      - AMQP_URL=amqp://${RABBITMQ_USER:-radiosync}:${RABBITMQ_PASSWORD:-radiosync}@rabbitmq:5672/
+      - DATABASE_URL=postgres://${POSTGRES_USER:-radiosync}:${POSTGRES_PASSWORD:-radiosync}@postgres:5432/${POSTGRES_DB:-radiosync}?sslmode=disable
+      - S3_ENDPOINT=http://minio:9000
+      - S3_BUCKET=musicas
+      - S3_ACCESS_KEY=${MINIO_ROOT_USER:-radiosync}
+      - S3_SECRET_KEY=${MINIO_ROOT_PASSWORD:-radiosync123}
+      - DATA_DIR=/app/data
+    volumes:
+      - media-data:/app/data:ro
+    depends_on:
+      bgutil-provider:
+        condition: service_started
+      # A Media API só sobe depois das migrations e cria o volume com o dono certo
+      media:
+        condition: service_healthy
+
   radiosync:
     build: .
     # Tag imutável por versão (SHA do commit), definida pelo scripts/deploy.sh.
@@ -122,6 +239,9 @@ services:
     ports:
       - "${HOST_PORT:-8080}:8080"
     environment:
+      # Tracing (OpenTelemetry -> Jaeger). Desliga com OTEL_EXPORTER_OTLP_ENDPOINT vazio.
+      - OTEL_EXPORTER_OTLP_ENDPOINT=${OTEL_EXPORTER_OTLP_ENDPOINT-http://jaeger:4318}
+      - OTEL_SERVICE_NAME=radiosync-server
       - PORT=8080
       # Origens extras para CORS/WebSocket (vírgula). Vazio = só a mesma origem
       - ALLOWED_ORIGINS=${ALLOWED_ORIGINS:-}
@@ -133,11 +253,9 @@ services:
       # Sem ADMIN_PASSWORD as rotas /api/v1/admin respondem 503 (seguro por padrão)
       - ADMIN_PASSWORD=${ADMIN_PASSWORD:-}
       - ADMIN_TOKEN_TTL=${ADMIN_TOKEN_TTL:-8h}
-      - POT_PROVIDER_URL=http://bgutil-provider:4416
       - DJ_TOKEN_TTL=${DJ_TOKEN_TTL:-24h}
       # Variáveis já disponíveis para a migração (ainda não lidas pelo código):
       - REDIS_URL=redis://redis:6379/0
-      - AMQP_URL=amqp://${RABBITMQ_USER:-radiosync}:${RABBITMQ_PASSWORD:-radiosync}@rabbitmq:5672/
       - DATABASE_URL=postgres://${POSTGRES_USER:-radiosync}:${POSTGRES_PASSWORD:-radiosync}@postgres:5432/${POSTGRES_DB:-radiosync}?sslmode=disable
       - S3_ENDPOINT=http://minio:9000
       - S3_BUCKET=musicas
@@ -147,9 +265,7 @@ services:
       - ./musicas:/app/musicas
       - ./data:/app/data
     depends_on:
-      - bgutil-provider
       - redis
-      - rabbitmq
       - postgres
       - minio
     labels:
@@ -168,19 +284,6 @@ services:
       - traefik.http.middlewares.create-station-ratelimit.ratelimit.average=10
       - traefik.http.middlewares.create-station-ratelimit.ratelimit.period=1m
       - traefik.http.middlewares.create-station-ratelimit.ratelimit.burst=5
-      # Upload e YouTube: CPU do FFmpeg/yt-dlp. 6/min (burst 3), no máximo
-      # 2 em andamento por IP e corpo até 100 MB (acima disso, 413)
-      - traefik.http.routers.radiosync-media.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/(upload|youtube)$`)
-      - traefik.http.routers.radiosync-media.entrypoints=web
-      - traefik.http.routers.radiosync-media.priority=90
-      - traefik.http.routers.radiosync-media.service=radiosync
-      - traefik.http.routers.radiosync-media.middlewares=media-ratelimit,media-inflight,media-bodylimit
-      - traefik.http.middlewares.media-ratelimit.ratelimit.average=6
-      - traefik.http.middlewares.media-ratelimit.ratelimit.period=1m
-      - traefik.http.middlewares.media-ratelimit.ratelimit.burst=3
-      - traefik.http.middlewares.media-inflight.inflightreq.amount=2
-      - traefik.http.middlewares.media-inflight.inflightreq.sourcecriterion.ipstrategy.depth=0
-      - traefik.http.middlewares.media-bodylimit.buffering.maxRequestBodyBytes=104857600
       # Assumir DJ: evita ficar tomando a bancada em loop (10/min, burst 5)
       - traefik.http.routers.radiosync-claim-dj.rule=Method(`POST`) && PathRegexp(`^/api/v1/stations/[^/]+/claim-dj$`)
       - traefik.http.routers.radiosync-claim-dj.entrypoints=web
@@ -230,6 +333,10 @@ services:
       - --entrypoints.traefik.address=:8081
       - --metrics.prometheus=true
       - --accesslog=true
+      # Tracing: o gateway abre o trace e propaga o traceparent para os serviços
+      - --tracing=true
+      - --tracing.serviceName=gateway
+      - --tracing.otlp.http.endpoint=http://jaeger:4318/v1/traces
     ports:
       - "${GATEWAY_PORT:-80}:80"
       # Dashboard e /metrics só na máquina local (use um túnel SSH no servidor).
@@ -308,6 +415,15 @@ services:
       - minio-data:/data
 
   # --------------------------------------------------------- observabilidade
+  jaeger:
+    # Jaeger v2: recebe OTLP (4318 HTTP) e guarda os traces em memória. A UI fica
+    # em http://localhost:16686. Em memória: os traces somem ao reiniciar o container.
+    image: jaegertracing/jaeger:2.10.0
+    container_name: radiosync-jaeger
+    restart: unless-stopped
+    ports:
+      - "${JAEGER_UI_BIND:-127.0.0.1}:16686:16686"
+
   prometheus:
     image: prom/prometheus:v2.55.1
     container_name: radiosync-prometheus
@@ -328,11 +444,13 @@ services:
       - "3000:3000"
     volumes:
       - ./infra/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ./infra/grafana/dashboards:/var/lib/grafana/dashboards:ro
       - grafana-data:/var/lib/grafana
     depends_on:
       - prometheus
 
 volumes:
+  media-data:
   redis-data:
   rabbitmq-data:
   postgres-data:
