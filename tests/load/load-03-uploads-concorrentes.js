@@ -3,11 +3,19 @@
 // Meta: degradação < 20% com a fila (ADR-0002); resposta do upload 202 em < 500 ms.
 //
 // Uso: tests/load/run.sh load-03 [-e OUVINTES=200 -e UPLOADS=20 -e ANTES=60 -e DURANTE=90]
+//
+// ATENÇÃO: pelo gateway, 20 uploads simultâneos de um mesmo IP batem no limite de
+// taxa (media-ratelimit: 6 por minuto, rajada de 3; e no máx. 2 em andamento), e a
+// maioria recebe 429. É o comportamento esperado do ADR-0005, e vira o resultado
+// "upload_aceito" baixo. Para medir o efeito da FILA sobre o WebSocket, mande os
+// uploads direto à Media API, sem o limite do gateway:
+//   tests/load/run.sh load-03 -e UPLOAD_BASE_URL=http://media:8084
 import http from 'k6/http';
 import { check } from 'k6';
 import { Trend, Rate, Counter } from 'k6/metrics';
 import { createStation, runDJ, runListener, BASE_URL } from './lib/common.js';
 
+const UPLOAD_URL = __ENV.UPLOAD_BASE_URL || BASE_URL; // ver o aviso no topo
 const OUVINTES = parseInt(__ENV.OUVINTES || '200');
 const UPLOADS = parseInt(__ENV.UPLOADS || '20');
 const ANTES = parseInt(__ENV.ANTES || '60'); // segundos só com ouvintes (linha de base)
@@ -68,7 +76,7 @@ export function ouvinte(d) {
 
 export function enviar(d) {
   const res = http.post(
-    `${BASE_URL}/api/v1/stations/${d.stationId}/upload`,
+    `${UPLOAD_URL}/api/v1/stations/${d.stationId}/upload`,
     { file: http.file(arquivo, 'alarm.mp3', 'audio/mpeg') },
     { headers: { Authorization: `Bearer ${d.djToken}` }, tags: { name: 'upload' } },
   );

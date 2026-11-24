@@ -22,8 +22,14 @@ scrape_configs:
   # Métricas do Sync Service (conexões ativas, mensagens por segundo, fan-out)
   - job_name: sync
     metrics_path: /metrics
-    static_configs:
-      - targets: ["sync:8082"]
+    # dns_sd: cada réplica (--scale sync=N) vira um alvo e uma série própria. Com um
+    # nome fixo ("sync:8082") o DNS do Compose devolve uma réplica diferente a cada
+    # raspagem e os contadores de todas se misturam numa série só.
+    dns_sd_configs:
+      - names: ["sync"]
+        type: A
+        port: 8082
+        refresh_interval: 10s
 
   # Station Service (ADR-0003/0006): latência e erros HTTP por rota. As réplicas
   # (--scale station=N) aparecem pelo DNS do Compose.
